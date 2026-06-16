@@ -1,10 +1,10 @@
 # StorePilot AI Server
 
-상품명으로 네이버 카테고리를 찾기 위한 FastAPI 서버입니다.
+FastAPI server for matching product names to Naver categories with `intfloat/multilingual-e5-small`.
 
-## Python Version
+## Python
 
-`sentence-transformers`는 내부적으로 PyTorch를 사용합니다. PyTorch 계열 패키지는 최신 Python 버전 지원이 늦게 붙는 경우가 많아서, 이 서버는 uv로 Python 3.12를 고정해서 실행합니다.
+The AI server uses PyTorch through `sentence-transformers`, so it is pinned to Python 3.12.
 
 ```text
 requires-python = ">=3.12,<3.13"
@@ -12,22 +12,49 @@ requires-python = ">=3.12,<3.13"
 
 ## Setup With uv
 
-```bash
-cd ai-server
-uv python install 3.12
+On this Windows project, keep uv cache and managed Python paths inside the project to avoid user-directory permission issues.
+
+```powershell
+cd C:\Project\StorePilot\ai-server
+$env:UV_CACHE_DIR="C:\Project\StorePilot\ai-server\.uv-cache"
+$env:UV_PYTHON_INSTALL_DIR="C:\Project\StorePilot\ai-server\.uv-python"
 uv sync
+```
+
+If uv cannot discover its managed Python, point uv at an existing Python 3.12 interpreter:
+
+```powershell
+uv sync --python C:\Path\To\Python312\python.exe
 ```
 
 ## Run
 
-```bash
-uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```powershell
+$env:UV_CACHE_DIR="C:\Project\StorePilot\ai-server\.uv-cache"
+$env:UV_PYTHON_INSTALL_DIR="C:\Project\StorePilot\ai-server\.uv-python"
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-## Flow
+## API
 
-1. Spring Boot uploads Naver categories.
-2. Spring Boot calls `POST /ai/categories/rebuild`.
-3. The AI server embeds categories with `intfloat/multilingual-e5-small`.
-4. Product names are sent to `POST /ai/categories/predict`.
-5. The response returns Top 1 Naver category per product.
+```http
+POST /ai/categories/rebuild
+```
+
+Builds category embeddings for a Naver category version.
+
+```http
+POST /ai/categories/predict
+```
+
+Returns the Top 1 Naver category for each product name.
+
+## Spring Boot Integration
+
+Spring Boot calls the AI server at:
+
+```text
+storepilot.ai.base-url=http://127.0.0.1:8000
+```
+
+If the AI cache is missing, Spring Boot tries to rebuild embeddings and retries prediction once.
