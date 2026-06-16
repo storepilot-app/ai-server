@@ -1,6 +1,6 @@
 # StorePilot AI Server
 
-FastAPI server for matching product names to Naver categories with `intfloat/multilingual-e5-small`.
+FastAPI server for matching product names to Naver categories with `BAAI/bge-m3`.
 
 ## Python
 
@@ -32,6 +32,23 @@ uv sync --python C:\Path\To\Python312\python.exe
 ```powershell
 $env:UV_CACHE_DIR="C:\Project\StorePilot\ai-server\.uv-cache"
 $env:UV_PYTHON_INSTALL_DIR="C:\Project\StorePilot\ai-server\.uv-python"
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+## Embedding Model
+
+Default model:
+
+```text
+BAAI/bge-m3
+```
+
+The cache is separated by model name, so old `multilingual-e5-small` embeddings will not be reused with BGE-M3.
+
+To temporarily switch models:
+
+```powershell
+$env:STOREPILOT_EMBEDDING_MODEL="intfloat/multilingual-e5-small"
 uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
