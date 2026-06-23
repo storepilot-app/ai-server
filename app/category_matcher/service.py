@@ -104,7 +104,9 @@ def category_text(category: CategoryItem) -> str:
 
 def preprocess_product_name(product_name: str) -> str:
     text = product_name or ""
-    text = re.sub(r"[\[\](){}]", " ", text)
+    text = re.sub(r"\([^)]*\)|（[^）]*）", " ", text)
+    text = re.sub(r"\d+", " ", text)
+    text = re.sub(r"[\[\](){}（）]", " ", text)
     text = re.sub(r"[_/|,]+", " ", text)
     text = re.sub(r"\s+", " ", text)
     return text.strip()
