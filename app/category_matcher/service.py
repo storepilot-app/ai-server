@@ -11,6 +11,36 @@ from app.category_matcher.schemas import CategoryItem, PredictionCandidate, Pred
 MODEL_NAME = os.getenv("STOREPILOT_EMBEDDING_MODEL", "BAAI/bge-m3")
 CACHE_ROOT = Path(os.getenv("STOREPILOT_AI_CACHE_ROOT", "ai-cache/categories"))
 MODEL_CACHE_KEY = re.sub(r"[^A-Za-z0-9_.-]+", "_", MODEL_NAME).strip("_").lower()
+GUNPLA_CATEGORY_BONUS = float(os.getenv("STOREPILOT_GUNPLA_CATEGORY_BONUS", "0.08"))
+GUNPLA_STRONG_KEYWORDS = [
+    "HG",
+    "MG",
+    "RG",
+    "PG",
+    "EG",
+    "SD",
+    "HGUC",
+    "MGEX",
+    "건담",
+    "건프라",
+    "프라모델",
+    "반다이",
+    "자쿠",
+    "릭돔",
+    "돔",
+    "사자비",
+    "뉴건담",
+    "유니콘",
+    "스트라이크",
+    "프리덤",
+    "엑시아",
+    "발바토스",
+    "에어리얼",
+    "IBO",
+    "GQ",
+    "SEED",
+    "UC",
+]
 
 _model: SentenceTransformer | None = None
 
@@ -60,6 +90,7 @@ def predict_categories(version_id: int, products: list[ProductItem]) -> list[Pre
 
     results: list[PredictionItem] = []
     for product, row_scores in zip(products, scores):
+        row_scores = apply_gunpla_category_bonus(product.productName, row_scores, categories)
         top_indexes = np.argsort(row_scores)[::-1][:5]
         top_index = int(top_indexes[0])
         category = categories[int(top_index)]
@@ -84,6 +115,33 @@ def predict_categories(version_id: int, products: list[ProductItem]) -> list[Pre
             )
         )
     return results
+
+
+def apply_gunpla_category_bonus(product_name: str, row_scores: np.ndarray, categories: list[dict]) -> np.ndarray:
+    if not has_gunpla_keyword(product_name):
+        return row_scores
+
+    adjusted_scores = row_scores.copy()
+    for index, category in enumerate(categories):
+        if is_plamodel_category(category):
+            adjusted_scores[index] += GUNPLA_CATEGORY_BONUS
+    return adjusted_scores
+
+
+def has_gunpla_keyword(product_name: str) -> bool:
+    normalized = normalize_keyword_text(product_name)
+    if not normalized:
+        return False
+    return any(normalize_keyword_text(keyword) in normalized for keyword in GUNPLA_STRONG_KEYWORDS)
+
+
+def is_plamodel_category(category: dict) -> bool:
+    text = f"{category.get('fullPath', '')} {category.get('searchText', '')}"
+    return "프라모델" in text
+
+
+def normalize_keyword_text(value: str) -> str:
+    return re.sub(r"[\s_/(),\[\]{}|,-]+", "", value or "").upper()
 
 
 def embed(texts: list[str]) -> np.ndarray:
