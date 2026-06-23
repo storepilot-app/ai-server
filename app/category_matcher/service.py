@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
-from app.category_matcher.schemas import CategoryItem, PredictionItem, ProductItem
+from app.category_matcher.schemas import CategoryItem, PredictionCandidate, PredictionItem, ProductItem
 
 MODEL_NAME = os.getenv("STOREPILOT_EMBEDDING_MODEL", "BAAI/bge-m3")
 CACHE_ROOT = Path(os.getenv("STOREPILOT_AI_CACHE_ROOT", "ai-cache/categories"))
@@ -44,7 +44,7 @@ def predict_categories(version_id: int, products: list[ProductItem]) -> list[Pre
     embeddings, categories = load_category_cache(version_id)
     if len(categories) == 0:
         return [
-            PredictionItem(rowId=product.rowId, categoryId=None, categoryCode=None, fullPath=None, score=0.0)
+            PredictionItem(rowId=product.rowId, categoryId=None, categoryCode=None, fullPath=None, score=0.0, candidates=[])
             for product in products
         ]
 
@@ -52,16 +52,27 @@ def predict_categories(version_id: int, products: list[ProductItem]) -> list[Pre
     query_embeddings = embed(queries)
     if query_embeddings.shape[1] != embeddings.shape[1]:
         return [
-            PredictionItem(rowId=product.rowId, categoryId=None, categoryCode=None, fullPath=None, score=0.0)
+            PredictionItem(rowId=product.rowId, categoryId=None, categoryCode=None, fullPath=None, score=0.0, candidates=[])
             for product in products
         ]
 
     scores = query_embeddings @ embeddings.T
-    top_indexes = scores.argmax(axis=1)
 
     results: list[PredictionItem] = []
-    for product, top_index, row_scores in zip(products, top_indexes, scores):
+    for product, row_scores in zip(products, scores):
+        top_indexes = np.argsort(row_scores)[::-1][:5]
+        top_index = int(top_indexes[0])
         category = categories[int(top_index)]
+        candidates = [
+            PredictionCandidate(
+                categoryId=candidate["categoryId"],
+                categoryCode=candidate["categoryCode"],
+                fullPath=candidate["fullPath"],
+                score=float(row_scores[int(candidate_index)]),
+            )
+            for candidate_index in top_indexes
+            for candidate in [categories[int(candidate_index)]]
+        ]
         results.append(
             PredictionItem(
                 rowId=product.rowId,
@@ -69,6 +80,7 @@ def predict_categories(version_id: int, products: list[ProductItem]) -> list[Pre
                 categoryCode=category["categoryCode"],
                 fullPath=category["fullPath"],
                 score=float(row_scores[int(top_index)]),
+                candidates=candidates,
             )
         )
     return results

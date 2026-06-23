@@ -29,12 +29,20 @@ class PredictRequest(BaseModel):
     products: list[ProductItem] = Field(default_factory=list)
 
 
+class PredictionCandidate(BaseModel):
+    categoryId: int
+    categoryCode: str
+    fullPath: str
+    score: float
+
+
 class PredictionItem(BaseModel):
     rowId: int
     categoryId: int | None
     categoryCode: str | None
     fullPath: str | None
     score: float
+    candidates: list[PredictionCandidate] = Field(default_factory=list)
 
 
 class PredictResponse(BaseModel):
