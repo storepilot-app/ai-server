@@ -47,7 +47,7 @@ Set these environment variables before running the server:
 STOREPILOT_LLM_API_KEY=your-api-key
 STOREPILOT_LLM_MODEL=gpt-4o-mini
 STOREPILOT_LLM_BASE_URL=https://api.openai.com/v1
-STOREPILOT_LLM_TIMEOUT_SECONDS=20
+STOREPILOT_LLM_TIMEOUT_SECONDS=90
 STOREPILOT_LLM_BATCH_SIZE=30
 ```
 

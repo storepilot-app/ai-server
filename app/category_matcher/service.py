@@ -19,7 +19,7 @@ GUNPLA_CATEGORY_BONUS = float(os.getenv("STOREPILOT_GUNPLA_CATEGORY_BONUS", "0.3
 LLM_API_KEY = os.getenv("STOREPILOT_LLM_API_KEY", "")
 LLM_BASE_URL = os.getenv("STOREPILOT_LLM_BASE_URL", "https://api.openai.com/v1").rstrip("/")
 LLM_MODEL = os.getenv("STOREPILOT_LLM_MODEL", "gpt-4o-mini")
-LLM_TIMEOUT_SECONDS = float(os.getenv("STOREPILOT_LLM_TIMEOUT_SECONDS", "20"))
+LLM_TIMEOUT_SECONDS = float(os.getenv("STOREPILOT_LLM_TIMEOUT_SECONDS", "90"))
 LLM_BATCH_SIZE = int(os.getenv("STOREPILOT_LLM_BATCH_SIZE", "30"))
 GUNPLA_STRONG_KEYWORDS = [
     "HG",
@@ -278,8 +278,9 @@ def request_llm_category_decisions(items: list[ProductCandidates]) -> list[dict]
                     "You are a strict Naver shopping category judge. "
                     "For each item, select the single best category only when one candidate clearly matches the product. "
                     "If all candidates for an item are unrelated or too broad, reject them. "
-                    "Return JSON only with key results. results must be an array of objects with keys: "
-                    "rowId(integer), matched(boolean), selectedIndex(integer or null), confidence(number from 0 to 1), reason(string)."
+                    "Return compact JSON only with key results. results must be an array of objects with keys: "
+                    "rowId(integer), matched(boolean), selectedIndex(integer or null), confidence(number from 0 to 1), reason(string). "
+                    "Keep each reason under 20 Korean characters."
                 ),
             },
             {
