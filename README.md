@@ -48,6 +48,7 @@ STOREPILOT_LLM_API_KEY=your-api-key
 STOREPILOT_LLM_MODEL=gpt-4o-mini
 STOREPILOT_LLM_BASE_URL=https://api.openai.com/v1
 STOREPILOT_LLM_TIMEOUT_SECONDS=20
+STOREPILOT_LLM_BATCH_SIZE=30
 ```
 
 If `STOREPILOT_LLM_API_KEY` is empty, the server skips the LLM call and uses the embedding Top-1 result. If the LLM rejects all Top-5 candidates, the final category is returned as no match while the Top-5 candidates remain available for Excel review.

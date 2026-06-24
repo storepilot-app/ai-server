@@ -20,6 +20,7 @@ LLM_API_KEY = os.getenv("STOREPILOT_LLM_API_KEY", "")
 LLM_BASE_URL = os.getenv("STOREPILOT_LLM_BASE_URL", "https://api.openai.com/v1").rstrip("/")
 LLM_MODEL = os.getenv("STOREPILOT_LLM_MODEL", "gpt-4o-mini")
 LLM_TIMEOUT_SECONDS = float(os.getenv("STOREPILOT_LLM_TIMEOUT_SECONDS", "20"))
+LLM_BATCH_SIZE = int(os.getenv("STOREPILOT_LLM_BATCH_SIZE", "30"))
 GUNPLA_STRONG_KEYWORDS = [
     "HG",
     "MG",
@@ -60,6 +61,12 @@ class LlmSelection:
     used: bool
     status: str
     detail: str | None = None
+
+
+@dataclass(frozen=True)
+class ProductCandidates:
+    product: ProductItem
+    candidates: list[PredictionCandidate]
 
 
 def get_model() -> SentenceTransformer:
@@ -105,7 +112,7 @@ def predict_categories(version_id: int, products: list[ProductItem]) -> list[Pre
 
     scores = query_embeddings @ embeddings.T
 
-    results: list[PredictionItem] = []
+    product_candidates: list[ProductCandidates] = []
     for product, row_scores in zip(products, scores):
         row_scores = apply_gunpla_category_bonus(product.productName, row_scores, categories)
         top_indexes = np.argsort(row_scores)[::-1][:5]
@@ -119,18 +126,27 @@ def predict_categories(version_id: int, products: list[ProductItem]) -> list[Pre
             for candidate_index in top_indexes
             for candidate in [categories[int(candidate_index)]]
         ]
-        llm_selection = select_candidate_with_llm(product.productName, candidates)
+        product_candidates.append(ProductCandidates(product=product, candidates=candidates))
+
+    llm_selections = select_candidates_with_llm_batch(product_candidates)
+
+    results: list[PredictionItem] = []
+    for item in product_candidates:
+        llm_selection = llm_selections.get(
+            item.product.rowId,
+            fallback_llm_selection(item.candidates, "FAILED", "LLM batch response missing this rowId."),
+        )
         selected_candidate = llm_selection.selected_candidate
 
         if selected_candidate is None:
             results.append(
                 PredictionItem(
-                    rowId=product.rowId,
+                    rowId=item.product.rowId,
                     categoryId=None,
                     categoryCode=None,
                     fullPath=None,
                     score=0.0,
-                    candidates=candidates,
+                    candidates=item.candidates,
                     llmUsed=llm_selection.used,
                     llmSelectedCategory=None,
                     llmStatus=llm_selection.status,
@@ -141,12 +157,12 @@ def predict_categories(version_id: int, products: list[ProductItem]) -> list[Pre
 
         results.append(
             PredictionItem(
-                rowId=product.rowId,
+                rowId=item.product.rowId,
                 categoryId=selected_candidate.categoryId,
                 categoryCode=selected_candidate.categoryCode,
                 fullPath=selected_candidate.fullPath,
                 score=selected_candidate.score,
-                candidates=candidates,
+                candidates=item.candidates,
                 llmUsed=llm_selection.used,
                 llmSelectedCategory=selected_candidate.fullPath if llm_selection.used else None,
                 llmStatus=llm_selection.status,
@@ -157,18 +173,57 @@ def predict_categories(version_id: int, products: list[ProductItem]) -> list[Pre
 
 
 def select_candidate_with_llm(product_name: str, candidates: list[PredictionCandidate]) -> LlmSelection:
-    if not candidates:
-        return LlmSelection(selected_candidate=None, used=False, status="SKIPPED")
+    item = ProductCandidates(product=ProductItem(rowId=1, productName=product_name), candidates=candidates)
+    return select_candidates_with_llm_batch([item]).get(1, fallback_llm_selection(candidates, "FAILED", "LLM result missing."))
+
+
+def select_candidates_with_llm_batch(items: list[ProductCandidates]) -> dict[int, LlmSelection]:
+    selections: dict[int, LlmSelection] = {}
+    if not items:
+        return selections
+
+    for chunk in chunks(items, max(1, LLM_BATCH_SIZE)):
+        selections.update(select_candidates_chunk_with_llm(chunk))
+    return selections
+
+
+def select_candidates_chunk_with_llm(items: list[ProductCandidates]) -> dict[int, LlmSelection]:
     if not LLM_API_KEY:
-        return LlmSelection(selected_candidate=candidates[0], used=False, status="SKIPPED", detail="LLM API key is not set.")
+        return {
+            item.product.rowId: fallback_llm_selection(item.candidates, "SKIPPED", "LLM API key is not set.")
+            for item in items
+        }
 
     try:
-        decision = request_llm_category_decision(product_name, candidates)
+        decisions = request_llm_category_decisions(items)
     except Exception as error:
         detail = summarize_llm_error(error)
-        logger.warning("LLM category judge failed: %s", detail)
-        return LlmSelection(selected_candidate=candidates[0], used=False, status="FAILED", detail=detail)
+        logger.warning("LLM category judge batch failed: %s", detail)
+        return {
+            item.product.rowId: fallback_llm_selection(item.candidates, "FAILED", detail)
+            for item in items
+        }
 
+    decisions_by_row_id = {
+        decision.get("rowId"): decision
+        for decision in decisions
+        if isinstance(decision, dict)
+    }
+    return {
+        item.product.rowId: selection_from_llm_decision(item.candidates, decisions_by_row_id.get(item.product.rowId))
+        for item in items
+    }
+
+
+def fallback_llm_selection(candidates: list[PredictionCandidate], status: str, detail: str | None = None) -> LlmSelection:
+    if not candidates:
+        return LlmSelection(selected_candidate=None, used=False, status=status, detail=detail)
+    return LlmSelection(selected_candidate=candidates[0], used=False, status=status, detail=detail)
+
+
+def selection_from_llm_decision(candidates: list[PredictionCandidate], decision: dict | None) -> LlmSelection:
+    if decision is None:
+        return fallback_llm_selection(candidates, "FAILED", "LLM response did not include this rowId.")
     if decision.get("matched") is not True:
         return LlmSelection(selected_candidate=None, used=True, status="REJECTED")
 
@@ -211,7 +266,7 @@ def extract_openai_error_message(body: str) -> str:
     return body[:200]
 
 
-def request_llm_category_decision(product_name: str, candidates: list[PredictionCandidate]) -> dict:
+def request_llm_category_decisions(items: list[ProductCandidates]) -> list[dict]:
     payload = {
         "model": LLM_MODEL,
         "temperature": 0,
@@ -221,24 +276,30 @@ def request_llm_category_decision(product_name: str, candidates: list[Prediction
                 "role": "system",
                 "content": (
                     "You are a strict Naver shopping category judge. "
-                    "Select the single best category only when one candidate clearly matches the product. "
-                    "If all candidates are unrelated or too broad, reject them. "
-                    "Return JSON only with keys: matched(boolean), selectedIndex(integer or null), "
-                    "confidence(number from 0 to 1), reason(string)."
+                    "For each item, select the single best category only when one candidate clearly matches the product. "
+                    "If all candidates for an item are unrelated or too broad, reject them. "
+                    "Return JSON only with key results. results must be an array of objects with keys: "
+                    "rowId(integer), matched(boolean), selectedIndex(integer or null), confidence(number from 0 to 1), reason(string)."
                 ),
             },
             {
                 "role": "user",
                 "content": json.dumps(
                     {
-                        "productName": product_name,
-                        "candidates": [
+                        "items": [
                             {
-                                "index": index,
-                                "fullPath": candidate.fullPath,
-                                "embeddingScore": candidate.score,
+                                "rowId": item.product.rowId,
+                                "productName": item.product.productName,
+                                "candidates": [
+                                    {
+                                        "index": index,
+                                        "fullPath": candidate.fullPath,
+                                        "embeddingScore": candidate.score,
+                                    }
+                                    for index, candidate in enumerate(item.candidates)
+                                ],
                             }
-                            for index, candidate in enumerate(candidates)
+                            for item in items
                         ],
                     },
                     ensure_ascii=False,
@@ -259,7 +320,15 @@ def request_llm_category_decision(product_name: str, candidates: list[Prediction
         response_body = json.loads(response.read().decode("utf-8"))
 
     content = response_body["choices"][0]["message"]["content"]
-    return parse_llm_json(content)
+    parsed = parse_llm_json(content)
+    results = parsed.get("results")
+    if not isinstance(results, list):
+        raise ValueError("LLM response did not contain results array.")
+    return results
+
+
+def chunks(items: list[ProductCandidates], size: int) -> list[list[ProductCandidates]]:
+    return [items[index:index + size] for index in range(0, len(items), size)]
 
 
 def parse_llm_json(content: str) -> dict:
