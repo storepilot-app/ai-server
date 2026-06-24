@@ -45,6 +45,7 @@ class PredictionItem(BaseModel):
     candidates: list[PredictionCandidate] = Field(default_factory=list)
     llmUsed: bool = False
     llmSelectedCategory: str | None = None
+    llmStatus: str = "SKIPPED"
 
 
 class PredictResponse(BaseModel):

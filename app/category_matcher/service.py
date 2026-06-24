@@ -56,6 +56,7 @@ _model: SentenceTransformer | None = None
 class LlmSelection:
     selected_candidate: PredictionCandidate | None
     used: bool
+    status: str
 
 
 def get_model() -> SentenceTransformer:
@@ -129,6 +130,7 @@ def predict_categories(version_id: int, products: list[ProductItem]) -> list[Pre
                     candidates=candidates,
                     llmUsed=llm_selection.used,
                     llmSelectedCategory=None,
+                    llmStatus=llm_selection.status,
                 )
             )
             continue
@@ -143,6 +145,7 @@ def predict_categories(version_id: int, products: list[ProductItem]) -> list[Pre
                 candidates=candidates,
                 llmUsed=llm_selection.used,
                 llmSelectedCategory=selected_candidate.fullPath if llm_selection.used else None,
+                llmStatus=llm_selection.status,
             )
         )
     return results
@@ -150,23 +153,23 @@ def predict_categories(version_id: int, products: list[ProductItem]) -> list[Pre
 
 def select_candidate_with_llm(product_name: str, candidates: list[PredictionCandidate]) -> LlmSelection:
     if not candidates:
-        return LlmSelection(selected_candidate=None, used=False)
+        return LlmSelection(selected_candidate=None, used=False, status="SKIPPED")
     if not LLM_API_KEY:
-        return LlmSelection(selected_candidate=candidates[0], used=False)
+        return LlmSelection(selected_candidate=candidates[0], used=False, status="SKIPPED")
 
     try:
         decision = request_llm_category_decision(product_name, candidates)
     except (OSError, ValueError, KeyError, urllib.error.URLError):
-        return LlmSelection(selected_candidate=candidates[0], used=False)
+        return LlmSelection(selected_candidate=candidates[0], used=False, status="FAILED")
 
     if decision.get("matched") is not True:
-        return LlmSelection(selected_candidate=None, used=True)
+        return LlmSelection(selected_candidate=None, used=True, status="REJECTED")
 
     selected_index = decision.get("selectedIndex")
     if not isinstance(selected_index, int) or selected_index < 0 or selected_index >= len(candidates):
-        return LlmSelection(selected_candidate=candidates[0], used=False)
+        return LlmSelection(selected_candidate=candidates[0], used=False, status="FAILED")
 
-    return LlmSelection(selected_candidate=candidates[selected_index], used=True)
+    return LlmSelection(selected_candidate=candidates[selected_index], used=True, status="SELECTED")
 
 
 def request_llm_category_decision(product_name: str, candidates: list[PredictionCandidate]) -> dict:

@@ -26,6 +26,7 @@ class LlmCategorySelectionTest(unittest.TestCase):
 
         self.assertIsNone(selection.selected_candidate)
         self.assertTrue(selection.used)
+        self.assertEqual(selection.status, "REJECTED")
 
     def test_selects_llm_candidate_index(self) -> None:
         candidates = [
@@ -42,6 +43,7 @@ class LlmCategorySelectionTest(unittest.TestCase):
 
         self.assertEqual(selection.selected_candidate, candidates[1])
         self.assertTrue(selection.used)
+        self.assertEqual(selection.status, "SELECTED")
 
 
 if __name__ == "__main__":
