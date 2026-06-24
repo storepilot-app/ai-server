@@ -29,11 +29,28 @@ uv sync --python C:\Path\To\Python312\python.exe
 
 ## Run
 
+The server automatically loads `ai-server/.env` on startup. Real environment variables take priority over values in the file.
+
 ```powershell
 $env:UV_CACHE_DIR="C:\Project\StorePilot\ai-server\.uv-cache"
 $env:UV_PYTHON_INSTALL_DIR="C:\Project\StorePilot\ai-server\.uv-python"
 uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
+
+## LLM Category Judge
+
+After BGE-M3 returns Top-5 category candidates, the AI server can call an OpenAI-compatible chat completions API for every product and ask the LLM to select the best candidate or reject all candidates.
+
+Set these environment variables before running the server:
+
+```env
+STOREPILOT_LLM_API_KEY=your-api-key
+STOREPILOT_LLM_MODEL=gpt-4o-mini
+STOREPILOT_LLM_BASE_URL=https://api.openai.com/v1
+STOREPILOT_LLM_TIMEOUT_SECONDS=20
+```
+
+If `STOREPILOT_LLM_API_KEY` is empty, the server skips the LLM call and uses the embedding Top-1 result. If the LLM rejects all Top-5 candidates, the final category is returned as no match while the Top-5 candidates remain available for Excel review.
 
 ## Embedding Model
 

@@ -1,6 +1,8 @@
 import json
 import os
 import re
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import numpy as np
@@ -12,6 +14,10 @@ MODEL_NAME = os.getenv("STOREPILOT_EMBEDDING_MODEL", "BAAI/bge-m3")
 CACHE_ROOT = Path(os.getenv("STOREPILOT_AI_CACHE_ROOT", "ai-cache/categories"))
 MODEL_CACHE_KEY = re.sub(r"[^A-Za-z0-9_.-]+", "_", MODEL_NAME).strip("_").lower()
 GUNPLA_CATEGORY_BONUS = float(os.getenv("STOREPILOT_GUNPLA_CATEGORY_BONUS", "0.3"))
+LLM_API_KEY = os.getenv("STOREPILOT_LLM_API_KEY", "")
+LLM_BASE_URL = os.getenv("STOREPILOT_LLM_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+LLM_MODEL = os.getenv("STOREPILOT_LLM_MODEL", "gpt-4o-mini")
+LLM_TIMEOUT_SECONDS = float(os.getenv("STOREPILOT_LLM_TIMEOUT_SECONDS", "20"))
 GUNPLA_STRONG_KEYWORDS = [
     "HG",
     "MG",
@@ -92,8 +98,6 @@ def predict_categories(version_id: int, products: list[ProductItem]) -> list[Pre
     for product, row_scores in zip(products, scores):
         row_scores = apply_gunpla_category_bonus(product.productName, row_scores, categories)
         top_indexes = np.argsort(row_scores)[::-1][:5]
-        top_index = int(top_indexes[0])
-        category = categories[int(top_index)]
         candidates = [
             PredictionCandidate(
                 categoryId=candidate["categoryId"],
@@ -104,17 +108,114 @@ def predict_categories(version_id: int, products: list[ProductItem]) -> list[Pre
             for candidate_index in top_indexes
             for candidate in [categories[int(candidate_index)]]
         ]
+        selected_candidate = select_candidate_with_llm(product.productName, candidates)
+
+        if selected_candidate is None:
+            results.append(
+                PredictionItem(
+                    rowId=product.rowId,
+                    categoryId=None,
+                    categoryCode=None,
+                    fullPath=None,
+                    score=0.0,
+                    candidates=candidates,
+                )
+            )
+            continue
+
         results.append(
             PredictionItem(
                 rowId=product.rowId,
-                categoryId=category["categoryId"],
-                categoryCode=category["categoryCode"],
-                fullPath=category["fullPath"],
-                score=float(row_scores[int(top_index)]),
+                categoryId=selected_candidate.categoryId,
+                categoryCode=selected_candidate.categoryCode,
+                fullPath=selected_candidate.fullPath,
+                score=selected_candidate.score,
                 candidates=candidates,
             )
         )
     return results
+
+
+def select_candidate_with_llm(product_name: str, candidates: list[PredictionCandidate]) -> PredictionCandidate | None:
+    if not candidates:
+        return None
+    if not LLM_API_KEY:
+        return candidates[0]
+
+    try:
+        decision = request_llm_category_decision(product_name, candidates)
+    except (OSError, ValueError, KeyError, urllib.error.URLError):
+        return candidates[0]
+
+    if decision.get("matched") is not True:
+        return None
+
+    selected_index = decision.get("selectedIndex")
+    if not isinstance(selected_index, int) or selected_index < 0 or selected_index >= len(candidates):
+        return candidates[0]
+
+    return candidates[selected_index]
+
+
+def request_llm_category_decision(product_name: str, candidates: list[PredictionCandidate]) -> dict:
+    payload = {
+        "model": LLM_MODEL,
+        "temperature": 0,
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "You are a strict Naver shopping category judge. "
+                    "Select the single best category only when one candidate clearly matches the product. "
+                    "If all candidates are unrelated or too broad, reject them. "
+                    "Return JSON only with keys: matched(boolean), selectedIndex(integer or null), "
+                    "confidence(number from 0 to 1), reason(string)."
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "productName": product_name,
+                        "candidates": [
+                            {
+                                "index": index,
+                                "fullPath": candidate.fullPath,
+                                "embeddingScore": candidate.score,
+                            }
+                            for index, candidate in enumerate(candidates)
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+            },
+        ],
+    }
+    request = urllib.request.Request(
+        f"{LLM_BASE_URL}/chat/completions",
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {LLM_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=LLM_TIMEOUT_SECONDS) as response:
+        response_body = json.loads(response.read().decode("utf-8"))
+
+    content = response_body["choices"][0]["message"]["content"]
+    return parse_llm_json(content)
+
+
+def parse_llm_json(content: str) -> dict:
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", content or "", re.DOTALL)
+        if not match:
+            raise ValueError("LLM response did not contain JSON.")
+        return json.loads(match.group(0))
 
 
 def apply_gunpla_category_bonus(product_name: str, row_scores: np.ndarray, categories: list[dict]) -> np.ndarray:
