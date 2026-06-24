@@ -46,6 +46,7 @@ class PredictionItem(BaseModel):
     llmUsed: bool = False
     llmSelectedCategory: str | None = None
     llmStatus: str = "SKIPPED"
+    llmStatusDetail: str | None = None
 
 
 class PredictResponse(BaseModel):

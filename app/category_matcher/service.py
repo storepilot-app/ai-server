@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 import urllib.error
@@ -50,6 +51,7 @@ GUNPLA_STRONG_KEYWORDS = [
 ]
 
 _model: SentenceTransformer | None = None
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -57,6 +59,7 @@ class LlmSelection:
     selected_candidate: PredictionCandidate | None
     used: bool
     status: str
+    detail: str | None = None
 
 
 def get_model() -> SentenceTransformer:
@@ -131,6 +134,7 @@ def predict_categories(version_id: int, products: list[ProductItem]) -> list[Pre
                     llmUsed=llm_selection.used,
                     llmSelectedCategory=None,
                     llmStatus=llm_selection.status,
+                    llmStatusDetail=llm_selection.detail,
                 )
             )
             continue
@@ -146,6 +150,7 @@ def predict_categories(version_id: int, products: list[ProductItem]) -> list[Pre
                 llmUsed=llm_selection.used,
                 llmSelectedCategory=selected_candidate.fullPath if llm_selection.used else None,
                 llmStatus=llm_selection.status,
+                llmStatusDetail=llm_selection.detail,
             )
         )
     return results
@@ -155,21 +160,55 @@ def select_candidate_with_llm(product_name: str, candidates: list[PredictionCand
     if not candidates:
         return LlmSelection(selected_candidate=None, used=False, status="SKIPPED")
     if not LLM_API_KEY:
-        return LlmSelection(selected_candidate=candidates[0], used=False, status="SKIPPED")
+        return LlmSelection(selected_candidate=candidates[0], used=False, status="SKIPPED", detail="LLM API key is not set.")
 
     try:
         decision = request_llm_category_decision(product_name, candidates)
-    except (OSError, ValueError, KeyError, urllib.error.URLError):
-        return LlmSelection(selected_candidate=candidates[0], used=False, status="FAILED")
+    except Exception as error:
+        detail = summarize_llm_error(error)
+        logger.warning("LLM category judge failed: %s", detail)
+        return LlmSelection(selected_candidate=candidates[0], used=False, status="FAILED", detail=detail)
 
     if decision.get("matched") is not True:
         return LlmSelection(selected_candidate=None, used=True, status="REJECTED")
 
     selected_index = decision.get("selectedIndex")
     if not isinstance(selected_index, int) or selected_index < 0 or selected_index >= len(candidates):
-        return LlmSelection(selected_candidate=candidates[0], used=False, status="FAILED")
+        return LlmSelection(
+            selected_candidate=candidates[0],
+            used=False,
+            status="FAILED",
+            detail=f"Invalid selectedIndex from LLM: {selected_index}",
+        )
 
     return LlmSelection(selected_candidate=candidates[selected_index], used=True, status="SELECTED")
+
+
+def summarize_llm_error(error: Exception) -> str:
+    if isinstance(error, urllib.error.HTTPError):
+        body = error.read().decode("utf-8", errors="replace")
+        message = extract_openai_error_message(body)
+        return f"HTTP {error.code}: {message}" if message else f"HTTP {error.code}: {error.reason}"
+    if isinstance(error, urllib.error.URLError):
+        return f"URL error: {error.reason}"
+    return f"{type(error).__name__}: {error}"
+
+
+def extract_openai_error_message(body: str) -> str:
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        return body[:200]
+
+    error = payload.get("error")
+    if isinstance(error, dict):
+        message = error.get("message")
+        code = error.get("code")
+        if message and code:
+            return f"{message} ({code})"
+        if message:
+            return str(message)
+    return body[:200]
 
 
 def request_llm_category_decision(product_name: str, candidates: list[PredictionCandidate]) -> dict:
