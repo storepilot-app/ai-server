@@ -43,6 +43,8 @@ class PredictionItem(BaseModel):
     fullPath: str | None
     score: float
     candidates: list[PredictionCandidate] = Field(default_factory=list)
+    llmUsed: bool = False
+    llmSelectedCategory: str | None = None
 
 
 class PredictResponse(BaseModel):

@@ -22,9 +22,10 @@ class LlmCategorySelectionTest(unittest.TestCase):
             "request_llm_category_decision",
             return_value={"matched": False, "selectedIndex": None, "confidence": 0.2, "reason": "no match"},
         ):
-            selected = service.select_candidate_with_llm("unrelated product", candidates)
+            selection = service.select_candidate_with_llm("unrelated product", candidates)
 
-        self.assertIsNone(selected)
+        self.assertIsNone(selection.selected_candidate)
+        self.assertTrue(selection.used)
 
     def test_selects_llm_candidate_index(self) -> None:
         candidates = [
@@ -37,9 +38,10 @@ class LlmCategorySelectionTest(unittest.TestCase):
             "request_llm_category_decision",
             return_value={"matched": True, "selectedIndex": 1, "confidence": 0.9, "reason": "best"},
         ):
-            selected = service.select_candidate_with_llm("product", candidates)
+            selection = service.select_candidate_with_llm("product", candidates)
 
-        self.assertEqual(selected, candidates[1])
+        self.assertEqual(selection.selected_candidate, candidates[1])
+        self.assertTrue(selection.used)
 
 
 if __name__ == "__main__":

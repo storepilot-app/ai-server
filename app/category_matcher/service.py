@@ -3,6 +3,7 @@ import os
 import re
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -49,6 +50,12 @@ GUNPLA_STRONG_KEYWORDS = [
 ]
 
 _model: SentenceTransformer | None = None
+
+
+@dataclass(frozen=True)
+class LlmSelection:
+    selected_candidate: PredictionCandidate | None
+    used: bool
 
 
 def get_model() -> SentenceTransformer:
@@ -108,7 +115,8 @@ def predict_categories(version_id: int, products: list[ProductItem]) -> list[Pre
             for candidate_index in top_indexes
             for candidate in [categories[int(candidate_index)]]
         ]
-        selected_candidate = select_candidate_with_llm(product.productName, candidates)
+        llm_selection = select_candidate_with_llm(product.productName, candidates)
+        selected_candidate = llm_selection.selected_candidate
 
         if selected_candidate is None:
             results.append(
@@ -119,6 +127,8 @@ def predict_categories(version_id: int, products: list[ProductItem]) -> list[Pre
                     fullPath=None,
                     score=0.0,
                     candidates=candidates,
+                    llmUsed=llm_selection.used,
+                    llmSelectedCategory=None,
                 )
             )
             continue
@@ -131,30 +141,32 @@ def predict_categories(version_id: int, products: list[ProductItem]) -> list[Pre
                 fullPath=selected_candidate.fullPath,
                 score=selected_candidate.score,
                 candidates=candidates,
+                llmUsed=llm_selection.used,
+                llmSelectedCategory=selected_candidate.fullPath if llm_selection.used else None,
             )
         )
     return results
 
 
-def select_candidate_with_llm(product_name: str, candidates: list[PredictionCandidate]) -> PredictionCandidate | None:
+def select_candidate_with_llm(product_name: str, candidates: list[PredictionCandidate]) -> LlmSelection:
     if not candidates:
-        return None
+        return LlmSelection(selected_candidate=None, used=False)
     if not LLM_API_KEY:
-        return candidates[0]
+        return LlmSelection(selected_candidate=candidates[0], used=False)
 
     try:
         decision = request_llm_category_decision(product_name, candidates)
     except (OSError, ValueError, KeyError, urllib.error.URLError):
-        return candidates[0]
+        return LlmSelection(selected_candidate=candidates[0], used=False)
 
     if decision.get("matched") is not True:
-        return None
+        return LlmSelection(selected_candidate=None, used=True)
 
     selected_index = decision.get("selectedIndex")
     if not isinstance(selected_index, int) or selected_index < 0 or selected_index >= len(candidates):
-        return candidates[0]
+        return LlmSelection(selected_candidate=candidates[0], used=False)
 
-    return candidates[selected_index]
+    return LlmSelection(selected_candidate=candidates[selected_index], used=True)
 
 
 def request_llm_category_decision(product_name: str, candidates: list[PredictionCandidate]) -> dict:
