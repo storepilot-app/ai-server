@@ -1,3 +1,4 @@
-app/category_matcher/__pycache__/
+__pycache__/
+**/__pycache__/
 *.pyc
 .env
