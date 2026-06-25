@@ -1,6 +1,13 @@
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
-from app.category_matcher.service import apply_tail_token_weight, emphasize_noun_like_terms, preprocess_embedding_query
+from app.category_matcher.service import (
+    apply_tail_token_weight,
+    emphasize_noun_like_terms,
+    extract_noun_focused_terms,
+    preprocess_embedding_query,
+)
 
 
 class EmbeddingQueryPreprocessingTest(unittest.TestCase):
@@ -23,6 +30,27 @@ class EmbeddingQueryPreprocessingTest(unittest.TestCase):
         value = apply_tail_token_weight("A B C")
 
         self.assertEqual("A B B C C C", value)
+
+    def test_extracts_noun_terms_with_kiwi_when_available(self) -> None:
+        def tokenize(value: str) -> list[SimpleNamespace]:
+            tokens_by_value = {
+                "\ucc45\uc77d\ub294": [
+                    SimpleNamespace(form="\ucc45", tag="NNG"),
+                    SimpleNamespace(form="\uc77d", tag="VV"),
+                ],
+                "\uacf0": [SimpleNamespace(form="\uacf0", tag="NNG")],
+                "\uc778\ud615": [SimpleNamespace(form="\uc778\ud615", tag="NNG")],
+            }
+            return tokens_by_value[value]
+
+        kiwi = SimpleNamespace(
+            tokenize=tokenize
+        )
+
+        with patch("app.category_matcher.service.get_kiwi", return_value=kiwi):
+            value = extract_noun_focused_terms("\ucc45\uc77d\ub294 \uacf0 \uc778\ud615")
+
+        self.assertEqual("\ucc45 \uacf0 \uc778\ud615", value)
 
 
 if __name__ == "__main__":

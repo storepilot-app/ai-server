@@ -9,6 +9,10 @@ from pathlib import Path
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
+try:
+    from kiwipiepy import Kiwi
+except ImportError:
+    Kiwi = None
 
 from app.category_matcher.schemas import CategoryItem, PredictionCandidate, PredictionItem, ProductItem
 
@@ -52,6 +56,7 @@ GUNPLA_STRONG_KEYWORDS = [
 ]
 
 _model: SentenceTransformer | None = None
+_kiwi = None
 logger = logging.getLogger(__name__)
 
 
@@ -74,6 +79,15 @@ def get_model() -> SentenceTransformer:
     if _model is None:
         _model = SentenceTransformer(MODEL_NAME)
     return _model
+
+
+def get_kiwi():
+    global _kiwi
+    if Kiwi is None:
+        return None
+    if _kiwi is None:
+        _kiwi = Kiwi()
+    return _kiwi
 
 
 def rebuild_category_cache(version_id: int, categories: list[CategoryItem]) -> None:
@@ -432,10 +446,53 @@ LOW_SIGNAL_KOREAN_ADVERBS = {
 
 def preprocess_embedding_query(product_name: str) -> str:
     text = preprocess_product_name(product_name)
-    noun_focused = emphasize_noun_like_terms(text)
+    noun_focused = extract_noun_focused_terms(text)
     if not noun_focused:
         return text
     return apply_tail_token_weight(noun_focused)
+
+
+def extract_noun_focused_terms(text: str) -> str:
+    kiwi = get_kiwi()
+    if kiwi is None:
+        return emphasize_noun_like_terms(text)
+
+    selected_tokens: list[str] = []
+    for raw_token in [token for token in re.split(r"\s+", text.strip()) if token]:
+        if raw_token in LOW_SIGNAL_KOREAN_ADVERBS:
+            continue
+        if is_model_like_token(raw_token):
+            selected_tokens.append(raw_token)
+            continue
+
+        try:
+            analyzed_tokens = kiwi.tokenize(raw_token)
+        except Exception:
+            return emphasize_noun_like_terms(text)
+
+        noun_forms = [
+            token.form.strip()
+            for token in analyzed_tokens
+            if token.form.strip()
+            and token.form.strip() not in LOW_SIGNAL_KOREAN_ADVERBS
+            and is_noun_like_pos(token.tag)
+        ]
+        if not noun_forms:
+            continue
+        if "".join(noun_forms) == raw_token:
+            selected_tokens.append(raw_token)
+        else:
+            selected_tokens.extend(noun_forms)
+
+    return " ".join(selected_tokens) if selected_tokens else emphasize_noun_like_terms(text)
+
+
+def is_noun_like_pos(pos: str) -> bool:
+    return pos.startswith("N") or pos in {"SL", "SN"}
+
+
+def is_model_like_token(token: str) -> bool:
+    return bool(re.search(r"[A-Za-z]", token)) or bool(re.fullmatch(r"[A-Za-z0-9_.+-]+", token))
 
 
 def emphasize_noun_like_terms(text: str) -> str:
