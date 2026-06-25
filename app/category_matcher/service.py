@@ -276,8 +276,8 @@ def request_llm_category_decisions(items: list[ProductCandidates]) -> list[dict]
                 "role": "system",
                 "content": (
                     "You are a strict Naver shopping category judge. "
-                    "For each item, select the single best category only when one candidate clearly matches the product. "
-                    "If all candidates for an item are unrelated or too broad, reject them. "
+                    "For each item, prefer choosing the single best category when one candidate is clearly better than the others. "
+                    "Reject all candidates only when every candidate is unrelated or too broad. "
                     "Return compact JSON only with key results. results must be an array of objects with keys: "
                     "rowId(integer), matched(boolean), selectedIndex(integer or null), confidence(number from 0 to 1), reason(string). "
                     "Keep each reason under 20 Korean characters."
