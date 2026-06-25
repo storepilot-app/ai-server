@@ -21,6 +21,7 @@ CACHE_ROOT = Path(os.getenv("STOREPILOT_AI_CACHE_ROOT", "ai-cache/categories"))
 MODEL_CACHE_KEY = re.sub(r"[^A-Za-z0-9_.-]+", "_", MODEL_NAME).strip("_").lower()
 GUNPLA_CATEGORY_BONUS = float(os.getenv("STOREPILOT_GUNPLA_CATEGORY_BONUS", "0.3"))
 BODY_KEYWORD_CATEGORY_BONUS = float(os.getenv("STOREPILOT_BODY_KEYWORD_CATEGORY_BONUS", "0.25"))
+BODY_KEYWORD_EXACT_CATEGORY_BONUS = float(os.getenv("STOREPILOT_BODY_KEYWORD_EXACT_CATEGORY_BONUS", "0.15"))
 LLM_API_KEY = os.getenv("STOREPILOT_LLM_API_KEY", "")
 LLM_BASE_URL = os.getenv("STOREPILOT_LLM_BASE_URL", "https://api.openai.com/v1").rstrip("/")
 LLM_MODEL = os.getenv("STOREPILOT_LLM_MODEL", "gpt-4o-mini")
@@ -62,6 +63,10 @@ BODY_KEYWORDS_BY_TYPE = {
     "\ud0a4\ub9c1": ["\ud0a4\ub9c1", "\ud0a4\ud640\ub354"],
     "\uc2a4\ud2f0\ucee4": ["\uc2a4\ud2f0\ucee4", "\uc52c"],
     "\ub2e4\uc774\uc5b4\ub9ac": ["\ub2e4\uc774\uc5b4\ub9ac"],
+    "\ud50c\ub798\ub108": ["\ud50c\ub798\ub108", "\uc2a4\ucf00\uc904\ub7ec"],
+    "\uce98\ub9b0\ub354": ["\uce98\ub9b0\ub354", "\ub2ec\ub825"],
+    "\ubc14\uc778\ub354": ["\ubc14\uc778\ub354"],
+    "\uac00\uacc4\ubd80": ["\uac00\uacc4\ubd80"],
     "\ud30c\uc6b0\uce58": ["\ud30c\uc6b0\uce58"],
     "\uac00\ubc29": ["\uac00\ubc29", "\ubc31\ud329", "\ud1a0\ud2b8\ubc31"],
     "\ubb34\ub4dc\ub4f1": ["\ubb34\ub4dc\ub4f1", "\uc870\uba85"],
@@ -76,6 +81,10 @@ BODY_KEYWORD_CATEGORY_TERMS = {
     "\ud0a4\ub9c1": ["\ud0a4\ub9c1", "\ud0a4\ud640\ub354"],
     "\uc2a4\ud2f0\ucee4": ["\uc2a4\ud2f0\ucee4", "\uc52c"],
     "\ub2e4\uc774\uc5b4\ub9ac": ["\ub2e4\uc774\uc5b4\ub9ac"],
+    "\ud50c\ub798\ub108": ["\ud50c\ub798\ub108", "\uc2a4\ucf00\uc904\ub7ec", "\ub2e4\uc774\uc5b4\ub9ac"],
+    "\uce98\ub9b0\ub354": ["\uce98\ub9b0\ub354", "\ub2ec\ub825", "\ub2e4\uc774\uc5b4\ub9ac"],
+    "\ubc14\uc778\ub354": ["\ubc14\uc778\ub354", "\ub2e4\uc774\uc5b4\ub9ac"],
+    "\uac00\uacc4\ubd80": ["\uac00\uacc4\ubd80", "\ub2e4\uc774\uc5b4\ub9ac"],
     "\ud30c\uc6b0\uce58": ["\ud30c\uc6b0\uce58"],
     "\uac00\ubc29": ["\uac00\ubc29", "\ubc31\ud329", "\ud1a0\ud2b8\ubc31"],
     "\ubb34\ub4dc\ub4f1": ["\ubb34\ub4dc\ub4f1", "\uc870\uba85"],
@@ -415,13 +424,22 @@ def apply_body_keyword_category_bonus(product_name: str, row_scores: np.ndarray,
 
     adjusted_scores = row_scores.copy()
     for index, category in enumerate(categories):
-        category_text_value = normalize_keyword_text(f"{category.get('fullPath', '')} {category.get('searchText', '')}")
+        full_path = category.get("fullPath", "")
+        category_text_value = normalize_keyword_text(f"{full_path} {category.get('searchText', '')}")
+        leaf_category = normalize_keyword_text(last_category_name(full_path))
         for body_keyword in body_keywords:
             category_terms = BODY_KEYWORD_CATEGORY_TERMS.get(body_keyword, [body_keyword])
             if any(normalize_keyword_text(term) in category_text_value for term in category_terms):
                 adjusted_scores[index] += BODY_KEYWORD_CATEGORY_BONUS
+                if any(normalize_keyword_text(term) == leaf_category for term in BODY_KEYWORDS_BY_TYPE.get(body_keyword, [body_keyword])):
+                    adjusted_scores[index] += BODY_KEYWORD_EXACT_CATEGORY_BONUS
                 break
     return adjusted_scores
+
+
+def last_category_name(full_path: str) -> str:
+    parts = [part.strip() for part in (full_path or "").split(">") if part.strip()]
+    return parts[-1] if parts else ""
 
 
 def has_gunpla_keyword(product_name: str) -> bool:
