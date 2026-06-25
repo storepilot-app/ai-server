@@ -102,7 +102,7 @@ def predict_categories(version_id: int, products: list[ProductItem]) -> list[Pre
             for product in products
         ]
 
-    queries = [preprocess_product_name(product.productName) for product in products]
+    queries = [preprocess_embedding_query(product.productName) for product in products]
     query_embeddings = embed(queries)
     if query_embeddings.shape[1] != embeddings.shape[1]:
         return [
@@ -395,6 +395,79 @@ def category_cache_dir(version_id: int) -> Path:
 
 def category_text(category: CategoryItem) -> str:
     return category.searchText or category.fullPath
+
+
+LOW_SIGNAL_KOREAN_MODIFIERS = [
+    "\uc77d\ub294",  # 읽는
+    "\uc549\uc740",  # 앉은
+    "\uc11c\ub294",  # 서는
+    "\ub204\uc6b4",  # 누운
+    "\uc790\ub294",  # 자는
+    "\uba39\ub294",  # 먹는
+    "\ub9c8\uc2dc\ub294",  # 마시는
+    "\uc785\ub294",  # 입는
+    "\uc4f0\ub294",  # 쓰는
+    "\uc7a1\ub294",  # 잡는
+    "\ud0c0\ub294",  # 타는
+    "\uac77\ub294",  # 걷는
+    "\ub6f0\ub294",  # 뛰는
+    "\ud558\ub294",  # 하는
+    "\uc788\ub294",  # 있는
+    "\uc5c6\ub294",  # 없는
+    "\uc88b\uc740",  # 좋은
+    "\uc608\uc05c",  # 예쁜
+    "\uadc0\uc5ec\uc6b4",  # 귀여운
+]
+
+LOW_SIGNAL_KOREAN_ADVERBS = {
+    "\ube68\ub9ac",  # 빨리
+    "\ucc9c\ucc9c\ud788",  # 천천히
+    "\ub9ce\uc774",  # 많이
+    "\uc880",  # 좀
+    "\uc798",  # 잘
+    "\ub9e4\uc6b0",  # 매우
+    "\ub108\ubb34",  # 너무
+}
+
+
+def preprocess_embedding_query(product_name: str) -> str:
+    text = preprocess_product_name(product_name)
+    noun_focused = emphasize_noun_like_terms(text)
+    if not noun_focused:
+        return text
+    return apply_tail_token_weight(noun_focused)
+
+
+def emphasize_noun_like_terms(text: str) -> str:
+    tokens = re.split(r"\s+", text.strip())
+    noun_like_tokens: list[str] = []
+    for token in tokens:
+        cleaned = remove_low_signal_korean_modifiers(token)
+        if not cleaned or cleaned in LOW_SIGNAL_KOREAN_ADVERBS:
+            continue
+        noun_like_tokens.append(cleaned)
+    return " ".join(noun_like_tokens)
+
+
+def apply_tail_token_weight(text: str) -> str:
+    tokens = [token for token in re.split(r"\s+", text.strip()) if token]
+    if len(tokens) <= 1:
+        return text.strip()
+
+    weighted_tokens: list[str] = []
+    last_index = len(tokens) - 1
+    for index, token in enumerate(tokens):
+        repeat_count = 1 + round((index / last_index) * 2)
+        weighted_tokens.extend([token] * repeat_count)
+    return " ".join(weighted_tokens)
+
+
+def remove_low_signal_korean_modifiers(token: str) -> str:
+    cleaned = token
+    for modifier in LOW_SIGNAL_KOREAN_MODIFIERS:
+        cleaned = cleaned.replace(modifier, " ")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
 
 
 def preprocess_product_name(product_name: str) -> str:
