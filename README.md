@@ -39,7 +39,7 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 ## LLM Category Judge
 
-After BGE-M3 returns Top-5 category candidates, the AI server can call an OpenAI-compatible chat completions API for every product and ask the LLM to select the best candidate or reject all candidates.
+After BGE-M3 returns Top-10 category candidates, the AI server can call an OpenAI-compatible chat completions API for every product and ask the LLM to select the best candidate or reject all candidates.
 
 Set these environment variables before running the server:
 
@@ -51,7 +51,7 @@ STOREPILOT_LLM_TIMEOUT_SECONDS=90
 STOREPILOT_LLM_BATCH_SIZE=30
 ```
 
-If `STOREPILOT_LLM_API_KEY` is empty, the server skips the LLM call and uses the embedding Top-1 result. If the LLM rejects all Top-5 candidates, the final category is returned as no match while the Top-5 candidates remain available for Excel review.
+If `STOREPILOT_LLM_API_KEY` is empty, the server skips the LLM call and uses the embedding Top-1 result. If the LLM rejects all Top-10 candidates, the final category is returned as no match while the Top-10 candidates remain available for Excel review.
 
 ## Embedding Model
 

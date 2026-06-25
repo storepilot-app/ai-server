@@ -115,7 +115,7 @@ def predict_categories(version_id: int, products: list[ProductItem]) -> list[Pre
     product_candidates: list[ProductCandidates] = []
     for product, row_scores in zip(products, scores):
         row_scores = apply_gunpla_category_bonus(product.productName, row_scores, categories)
-        top_indexes = np.argsort(row_scores)[::-1][:5]
+        top_indexes = np.argsort(row_scores)[::-1][:10]
         candidates = [
             PredictionCandidate(
                 categoryId=candidate["categoryId"],
