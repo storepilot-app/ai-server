@@ -20,6 +20,7 @@ MODEL_NAME = os.getenv("STOREPILOT_EMBEDDING_MODEL", "BAAI/bge-m3")
 CACHE_ROOT = Path(os.getenv("STOREPILOT_AI_CACHE_ROOT", "ai-cache/categories"))
 MODEL_CACHE_KEY = re.sub(r"[^A-Za-z0-9_.-]+", "_", MODEL_NAME).strip("_").lower()
 GUNPLA_CATEGORY_BONUS = float(os.getenv("STOREPILOT_GUNPLA_CATEGORY_BONUS", "0.3"))
+BODY_KEYWORD_CATEGORY_BONUS = float(os.getenv("STOREPILOT_BODY_KEYWORD_CATEGORY_BONUS", "0.25"))
 LLM_API_KEY = os.getenv("STOREPILOT_LLM_API_KEY", "")
 LLM_BASE_URL = os.getenv("STOREPILOT_LLM_BASE_URL", "https://api.openai.com/v1").rstrip("/")
 LLM_MODEL = os.getenv("STOREPILOT_LLM_MODEL", "gpt-4o-mini")
@@ -54,6 +55,45 @@ GUNPLA_STRONG_KEYWORDS = [
     "SEED",
     "UC",
 ]
+
+BODY_KEYWORDS_BY_TYPE = {
+    "\ud53c\uaddc\uc5b4": ["\ubbf8\ub2c8\ud53c\uaddc\uc5b4", "\ud53c\uaddc\uc5b4"],
+    "\uc778\ud615": ["\uc778\ud615", "\ubd09\uc81c\uc778\ud615"],
+    "\ud0a4\ub9c1": ["\ud0a4\ub9c1", "\ud0a4\ud640\ub354"],
+    "\uc2a4\ud2f0\ucee4": ["\uc2a4\ud2f0\ucee4", "\uc52c"],
+    "\ub2e4\uc774\uc5b4\ub9ac": ["\ub2e4\uc774\uc5b4\ub9ac"],
+    "\ud30c\uc6b0\uce58": ["\ud30c\uc6b0\uce58"],
+    "\uac00\ubc29": ["\uac00\ubc29", "\ubc31\ud329", "\ud1a0\ud2b8\ubc31"],
+    "\ubb34\ub4dc\ub4f1": ["\ubb34\ub4dc\ub4f1", "\uc870\uba85"],
+    "\ucef5": ["\ucef5", "\uba38\uadf8\ucef5", "\ud140\ube14\ub7ec"],
+    "\ucf00\uc774\uc2a4": ["\ucf00\uc774\uc2a4"],
+    "\ud0a4\ubcf4\ub4dc": ["\ud0a4\ubcf4\ub4dc"],
+    "\ub9c8\uc6b0\uc2a4": ["\ub9c8\uc6b0\uc2a4"],
+}
+BODY_KEYWORD_CATEGORY_TERMS = {
+    "\ud53c\uaddc\uc5b4": ["\ud53c\uaddc\uc5b4", "\ubaa8\ud615", "\ud504\ub77c\ubaa8\ub378", "\uc218\uc9d1\ud488"],
+    "\uc778\ud615": ["\uc778\ud615", "\uc644\uad6c"],
+    "\ud0a4\ub9c1": ["\ud0a4\ub9c1", "\ud0a4\ud640\ub354"],
+    "\uc2a4\ud2f0\ucee4": ["\uc2a4\ud2f0\ucee4", "\uc52c"],
+    "\ub2e4\uc774\uc5b4\ub9ac": ["\ub2e4\uc774\uc5b4\ub9ac"],
+    "\ud30c\uc6b0\uce58": ["\ud30c\uc6b0\uce58"],
+    "\uac00\ubc29": ["\uac00\ubc29", "\ubc31\ud329", "\ud1a0\ud2b8\ubc31"],
+    "\ubb34\ub4dc\ub4f1": ["\ubb34\ub4dc\ub4f1", "\uc870\uba85"],
+    "\ucef5": ["\ucef5", "\uba38\uadf8", "\ud140\ube14\ub7ec"],
+    "\ucf00\uc774\uc2a4": ["\ucf00\uc774\uc2a4"],
+    "\ud0a4\ubcf4\ub4dc": ["\ud0a4\ubcf4\ub4dc"],
+    "\ub9c8\uc6b0\uc2a4": ["\ub9c8\uc6b0\uc2a4"],
+}
+CONTEXT_NOUNS_WHEN_BODY_EXISTS = {
+    "\ucc45",
+    "\ub3c5\uc11c",
+    "\uacf5\ubd80",
+    "\uc0b0\ucc45",
+    "\uc6b4\ub3d9",
+    "\uc7a0",
+    "\uc218\uba74",
+    "\ub79c\ub364",
+}
 
 _model: SentenceTransformer | None = None
 _kiwi = None
@@ -129,6 +169,7 @@ def predict_categories(version_id: int, products: list[ProductItem]) -> list[Pre
     product_candidates: list[ProductCandidates] = []
     for product, row_scores in zip(products, scores):
         row_scores = apply_gunpla_category_bonus(product.productName, row_scores, categories)
+        row_scores = apply_body_keyword_category_bonus(product.productName, row_scores, categories)
         top_indexes = np.argsort(row_scores)[::-1][:10]
         candidates = [
             PredictionCandidate(
@@ -367,6 +408,22 @@ def apply_gunpla_category_bonus(product_name: str, row_scores: np.ndarray, categ
     return adjusted_scores
 
 
+def apply_body_keyword_category_bonus(product_name: str, row_scores: np.ndarray, categories: list[dict]) -> np.ndarray:
+    body_keywords = detect_body_keywords(product_name)
+    if not body_keywords:
+        return row_scores
+
+    adjusted_scores = row_scores.copy()
+    for index, category in enumerate(categories):
+        category_text_value = normalize_keyword_text(f"{category.get('fullPath', '')} {category.get('searchText', '')}")
+        for body_keyword in body_keywords:
+            category_terms = BODY_KEYWORD_CATEGORY_TERMS.get(body_keyword, [body_keyword])
+            if any(normalize_keyword_text(term) in category_text_value for term in category_terms):
+                adjusted_scores[index] += BODY_KEYWORD_CATEGORY_BONUS
+                break
+    return adjusted_scores
+
+
 def has_gunpla_keyword(product_name: str) -> bool:
     normalized = normalize_keyword_text(product_name)
     if not normalized:
@@ -446,10 +503,37 @@ LOW_SIGNAL_KOREAN_ADVERBS = {
 
 def preprocess_embedding_query(product_name: str) -> str:
     text = preprocess_product_name(product_name)
+    body_keywords = detect_body_keywords(text)
     noun_focused = extract_noun_focused_terms(text)
+    noun_focused = apply_body_keyword_focus(noun_focused, body_keywords)
     if not noun_focused:
         return text
     return apply_tail_token_weight(noun_focused)
+
+
+def detect_body_keywords(text: str) -> list[str]:
+    normalized = normalize_keyword_text(text)
+    detected: list[str] = []
+    for body_type, keywords in BODY_KEYWORDS_BY_TYPE.items():
+        if any(normalize_keyword_text(keyword) in normalized for keyword in keywords):
+            detected.append(body_type)
+    return detected
+
+
+def apply_body_keyword_focus(text: str, body_keywords: list[str]) -> str:
+    if not body_keywords:
+        return text
+
+    tokens = [token for token in re.split(r"\s+", text.strip()) if token]
+    focused_tokens = [
+        token for token in tokens
+        if token not in CONTEXT_NOUNS_WHEN_BODY_EXISTS
+    ]
+    for body_keyword in body_keywords:
+        if body_keyword not in focused_tokens:
+            focused_tokens.append(body_keyword)
+        focused_tokens.extend([body_keyword] * 3)
+    return " ".join(focused_tokens)
 
 
 def extract_noun_focused_terms(text: str) -> str:
