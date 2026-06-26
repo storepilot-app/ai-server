@@ -8,6 +8,7 @@ from app.category_matcher.service import apply_gunpla_category_bonus, has_gunpla
 class GunplaCategoryBonusTest(unittest.TestCase):
     def test_detects_gunpla_keyword(self) -> None:
         self.assertTrue(has_gunpla_keyword("HG RX-78 건담"))
+        self.assertTrue(has_gunpla_keyword("30MM 옵션 파츠 세트"))
 
     def test_adds_bonus_only_to_plamodel_category(self) -> None:
         scores = np.array([0.4, 0.5], dtype=np.float32)
