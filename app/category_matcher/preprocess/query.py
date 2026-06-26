@@ -123,7 +123,7 @@ def apply_tail_token_weight(text: str) -> str:
     weighted_tokens: list[str] = []
     last_index = len(tokens) - 1
     for index, token in enumerate(tokens):
-        repeat_count = 1 + round((index / last_index) * 2)
+        repeat_count = 1 + round((index / last_index) * 3)
         weighted_tokens.extend([token] * repeat_count)
     return " ".join(weighted_tokens)
 
