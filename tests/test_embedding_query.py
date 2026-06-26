@@ -50,7 +50,7 @@ class EmbeddingQueryPreprocessingTest(unittest.TestCase):
             tokenize=tokenize
         )
 
-        with patch("app.category_matcher.service.get_kiwi", return_value=kiwi):
+        with patch("app.category_matcher.preprocess.query.get_kiwi", return_value=kiwi):
             value = extract_noun_focused_terms("책읽는 곰 인형")
 
         self.assertEqual("책 곰 인형", value)

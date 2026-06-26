@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from app.category_matcher import service
+from app.category_matcher.llm import judge as service
 from app.category_matcher.schemas import PredictionCandidate
 
 
