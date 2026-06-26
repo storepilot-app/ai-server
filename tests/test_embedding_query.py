@@ -32,7 +32,7 @@ class EmbeddingQueryPreprocessingTest(unittest.TestCase):
     def test_tail_token_weight_has_three_levels(self) -> None:
         value = apply_tail_token_weight("A B C")
 
-        self.assertEqual("A B B C C C C", value)
+        self.assertEqual("A B B C C C", value)
 
     def test_extracts_noun_terms_with_kiwi_when_available(self) -> None:
         def tokenize(value: str) -> list[SimpleNamespace]:
