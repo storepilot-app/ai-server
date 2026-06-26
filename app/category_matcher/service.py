@@ -22,6 +22,7 @@ MODEL_CACHE_KEY = re.sub(r"[^A-Za-z0-9_.-]+", "_", MODEL_NAME).strip("_").lower(
 GUNPLA_CATEGORY_BONUS = float(os.getenv("STOREPILOT_GUNPLA_CATEGORY_BONUS", "0.3"))
 BODY_KEYWORD_CATEGORY_BONUS = float(os.getenv("STOREPILOT_BODY_KEYWORD_CATEGORY_BONUS", "0.25"))
 BODY_KEYWORD_EXACT_CATEGORY_BONUS = float(os.getenv("STOREPILOT_BODY_KEYWORD_EXACT_CATEGORY_BONUS", "0.15"))
+BODY_KEYWORD_NON_MATCH_PENALTY = float(os.getenv("STOREPILOT_BODY_KEYWORD_NON_MATCH_PENALTY", "0.35"))
 LLM_API_KEY = os.getenv("STOREPILOT_LLM_API_KEY", "")
 LLM_BASE_URL = os.getenv("STOREPILOT_LLM_BASE_URL", "https://api.openai.com/v1").rstrip("/")
 LLM_MODEL = os.getenv("STOREPILOT_LLM_MODEL", "gpt-4o-mini")
@@ -58,50 +59,58 @@ GUNPLA_STRONG_KEYWORDS = [
 ]
 
 BODY_KEYWORDS_BY_TYPE = {
-    "\ud53c\uaddc\uc5b4": ["\ubbf8\ub2c8\ud53c\uaddc\uc5b4", "\ud53c\uaddc\uc5b4"],
-    "\uc778\ud615": ["\uc778\ud615", "\ubd09\uc81c\uc778\ud615"],
-    "\ud0a4\ub9c1": ["\ud0a4\ub9c1", "\ud0a4\ud640\ub354"],
-    "\uc2a4\ud2f0\ucee4": ["\uc2a4\ud2f0\ucee4", "\uc52c"],
-    "\ub2e4\uc774\uc5b4\ub9ac": ["\ub2e4\uc774\uc5b4\ub9ac"],
-    "\ud50c\ub798\ub108": ["\ud50c\ub798\ub108", "\uc2a4\ucf00\uc904\ub7ec"],
-    "\uce98\ub9b0\ub354": ["\uce98\ub9b0\ub354", "\ub2ec\ub825"],
-    "\ubc14\uc778\ub354": ["\ubc14\uc778\ub354"],
-    "\uac00\uacc4\ubd80": ["\uac00\uacc4\ubd80"],
-    "\ud30c\uc6b0\uce58": ["\ud30c\uc6b0\uce58"],
-    "\uac00\ubc29": ["\uac00\ubc29", "\ubc31\ud329", "\ud1a0\ud2b8\ubc31"],
-    "\ubb34\ub4dc\ub4f1": ["\ubb34\ub4dc\ub4f1", "\uc870\uba85"],
-    "\ucef5": ["\ucef5", "\uba38\uadf8\ucef5", "\ud140\ube14\ub7ec"],
-    "\ucf00\uc774\uc2a4": ["\ucf00\uc774\uc2a4"],
-    "\ud0a4\ubcf4\ub4dc": ["\ud0a4\ubcf4\ub4dc"],
-    "\ub9c8\uc6b0\uc2a4": ["\ub9c8\uc6b0\uc2a4"],
+    "피규어": ["미니피규어", "피규어"],
+    "인형": ["인형", "봉제인형"],
+    "키링": ["키링", "키홀더"],
+    "스티커": ["스티커", "씰"],
+    "다이어리": ["다이어리"],
+    "플래너": ["플래너", "스케줄러"],
+    "캘린더": ["캘린더", "달력"],
+    "바인더": ["바인더"],
+    "가계부": ["가계부"],
+    "파우치": ["파우치"],
+    "가방": ["가방", "백팩", "토트백"],
+    "무드등": ["무드등", "조명"],
+    "컵": ["컵", "머그컵", "텀블러"],
+    "케이스": ["케이스"],
+    "키보드": ["키보드"],
+    "마우스": ["마우스"],
+    "샤프": ["샤프", "샤프펜슬"],
+    "볼펜": ["볼펜"],
+    "연필": ["연필"],
+    "펜": ["펜", "필기구"],
 }
 BODY_KEYWORD_CATEGORY_TERMS = {
-    "\ud53c\uaddc\uc5b4": ["\ud53c\uaddc\uc5b4", "\ubaa8\ud615", "\ud504\ub77c\ubaa8\ub378", "\uc218\uc9d1\ud488"],
-    "\uc778\ud615": ["\uc778\ud615", "\uc644\uad6c"],
-    "\ud0a4\ub9c1": ["\ud0a4\ub9c1", "\ud0a4\ud640\ub354"],
-    "\uc2a4\ud2f0\ucee4": ["\uc2a4\ud2f0\ucee4", "\uc52c"],
-    "\ub2e4\uc774\uc5b4\ub9ac": ["\ub2e4\uc774\uc5b4\ub9ac"],
-    "\ud50c\ub798\ub108": ["\ud50c\ub798\ub108", "\uc2a4\ucf00\uc904\ub7ec", "\ub2e4\uc774\uc5b4\ub9ac"],
-    "\uce98\ub9b0\ub354": ["\uce98\ub9b0\ub354", "\ub2ec\ub825", "\ub2e4\uc774\uc5b4\ub9ac"],
-    "\ubc14\uc778\ub354": ["\ubc14\uc778\ub354", "\ub2e4\uc774\uc5b4\ub9ac"],
-    "\uac00\uacc4\ubd80": ["\uac00\uacc4\ubd80", "\ub2e4\uc774\uc5b4\ub9ac"],
-    "\ud30c\uc6b0\uce58": ["\ud30c\uc6b0\uce58"],
-    "\uac00\ubc29": ["\uac00\ubc29", "\ubc31\ud329", "\ud1a0\ud2b8\ubc31"],
-    "\ubb34\ub4dc\ub4f1": ["\ubb34\ub4dc\ub4f1", "\uc870\uba85"],
-    "\ucef5": ["\ucef5", "\uba38\uadf8", "\ud140\ube14\ub7ec"],
-    "\ucf00\uc774\uc2a4": ["\ucf00\uc774\uc2a4"],
-    "\ud0a4\ubcf4\ub4dc": ["\ud0a4\ubcf4\ub4dc"],
-    "\ub9c8\uc6b0\uc2a4": ["\ub9c8\uc6b0\uc2a4"],
+    "피규어": ["피규어", "모형", "프라모델", "수집품"],
+    "인형": ["인형", "완구"],
+    "키링": ["키링", "키홀더"],
+    "스티커": ["스티커", "씰"],
+    "다이어리": ["다이어리"],
+    "플래너": ["플래너", "스케줄러", "다이어리"],
+    "캘린더": ["캘린더", "달력", "다이어리"],
+    "바인더": ["바인더", "다이어리"],
+    "가계부": ["가계부", "다이어리"],
+    "파우치": ["파우치"],
+    "가방": ["가방", "백팩", "토트백"],
+    "무드등": ["무드등", "조명"],
+    "컵": ["컵", "머그", "텀블러"],
+    "케이스": ["케이스"],
+    "키보드": ["키보드"],
+    "마우스": ["마우스"],
+    "샤프": ["샤프", "필기도구"],
+    "볼펜": ["볼펜", "펜", "필기도구"],
+    "연필": ["연필", "필기도구"],
+    "펜": ["펜", "필기구", "필기도구"],
 }
 CONTEXT_NOUNS_WHEN_BODY_EXISTS = {
-    "\ucc45",
-    "\ub3c5\uc11c",
-    "\uacf5\ubd80",
-    "\uc0b0\ucc45",
-    "\uc6b4\ub3d9",
-    "\uc7a0",
-    "\uc218\uba74",
-    "\ub79c\ub364",
+    "책",
+    "독서",
+    "공부",
+    "산책",
+    "운동",
+    "잠",
+    "수면",
+    "랜덤",
 }
 
 _model: SentenceTransformer | None = None
@@ -177,8 +186,11 @@ def predict_categories(version_id: int, products: list[ProductItem]) -> list[Pre
 
     product_candidates: list[ProductCandidates] = []
     for product, row_scores in zip(products, scores):
-        row_scores = apply_gunpla_category_bonus(product.productName, row_scores, categories)
-        row_scores = apply_body_keyword_category_bonus(product.productName, row_scores, categories)
+        body_keywords = detect_body_keywords(product.productName)
+        if body_keywords:
+            row_scores = apply_body_keyword_category_bonus(product.productName, row_scores, categories, body_keywords)
+        else:
+            row_scores = apply_gunpla_category_bonus(product.productName, row_scores, categories)
         top_indexes = np.argsort(row_scores)[::-1][:10]
         candidates = [
             PredictionCandidate(
@@ -417,8 +429,13 @@ def apply_gunpla_category_bonus(product_name: str, row_scores: np.ndarray, categ
     return adjusted_scores
 
 
-def apply_body_keyword_category_bonus(product_name: str, row_scores: np.ndarray, categories: list[dict]) -> np.ndarray:
-    body_keywords = detect_body_keywords(product_name)
+def apply_body_keyword_category_bonus(
+    product_name: str,
+    row_scores: np.ndarray,
+    categories: list[dict],
+    body_keywords: list[str] | None = None,
+) -> np.ndarray:
+    body_keywords = body_keywords if body_keywords is not None else detect_body_keywords(product_name)
     if not body_keywords:
         return row_scores
 
@@ -427,13 +444,17 @@ def apply_body_keyword_category_bonus(product_name: str, row_scores: np.ndarray,
         full_path = category.get("fullPath", "")
         category_text_value = normalize_keyword_text(f"{full_path} {category.get('searchText', '')}")
         leaf_category = normalize_keyword_text(last_category_name(full_path))
+        matched_body_category = False
         for body_keyword in body_keywords:
             category_terms = BODY_KEYWORD_CATEGORY_TERMS.get(body_keyword, [body_keyword])
             if any(normalize_keyword_text(term) in category_text_value for term in category_terms):
                 adjusted_scores[index] += BODY_KEYWORD_CATEGORY_BONUS
                 if any(normalize_keyword_text(term) == leaf_category for term in BODY_KEYWORDS_BY_TYPE.get(body_keyword, [body_keyword])):
                     adjusted_scores[index] += BODY_KEYWORD_EXACT_CATEGORY_BONUS
+                matched_body_category = True
                 break
+        if not matched_body_category:
+            adjusted_scores[index] -= BODY_KEYWORD_NON_MATCH_PENALTY
     return adjusted_scores
 
 
@@ -487,35 +508,35 @@ def category_text(category: CategoryItem) -> str:
 
 
 LOW_SIGNAL_KOREAN_MODIFIERS = [
-    "\uc77d\ub294",  # 읽는
-    "\uc549\uc740",  # 앉은
-    "\uc11c\ub294",  # 서는
-    "\ub204\uc6b4",  # 누운
-    "\uc790\ub294",  # 자는
-    "\uba39\ub294",  # 먹는
-    "\ub9c8\uc2dc\ub294",  # 마시는
-    "\uc785\ub294",  # 입는
-    "\uc4f0\ub294",  # 쓰는
-    "\uc7a1\ub294",  # 잡는
-    "\ud0c0\ub294",  # 타는
-    "\uac77\ub294",  # 걷는
-    "\ub6f0\ub294",  # 뛰는
-    "\ud558\ub294",  # 하는
-    "\uc788\ub294",  # 있는
-    "\uc5c6\ub294",  # 없는
-    "\uc88b\uc740",  # 좋은
-    "\uc608\uc05c",  # 예쁜
-    "\uadc0\uc5ec\uc6b4",  # 귀여운
+    "읽는",
+    "앉은",
+    "서는",
+    "누운",
+    "자는",
+    "먹는",
+    "마시는",
+    "입는",
+    "쓰는",
+    "잡는",
+    "타는",
+    "걷는",
+    "뛰는",
+    "하는",
+    "있는",
+    "없는",
+    "좋은",
+    "예쁜",
+    "귀여운",
 ]
 
 LOW_SIGNAL_KOREAN_ADVERBS = {
-    "\ube68\ub9ac",  # 빨리
-    "\ucc9c\ucc9c\ud788",  # 천천히
-    "\ub9ce\uc774",  # 많이
-    "\uc880",  # 좀
-    "\uc798",  # 잘
-    "\ub9e4\uc6b0",  # 매우
-    "\ub108\ubb34",  # 너무
+    "빨리",
+    "천천히",
+    "많이",
+    "좀",
+    "잘",
+    "매우",
+    "너무",
 }
 
 

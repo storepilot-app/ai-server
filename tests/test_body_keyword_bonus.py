@@ -12,25 +12,25 @@ class BodyKeywordCategoryBonusTest(unittest.TestCase):
             {
                 "categoryId": 1,
                 "categoryCode": "A",
-                "fullPath": "\uc0dd\ud65c/\uac74\uac15 > \uc218\uc9d1\ud488 > \ubaa8\ud615/\ud504\ub77c\ubaa8\ub378/\ud53c\uaddc\uc5b4 > \ud53c\uaddc\uc5b4",
+                "fullPath": "생활/건강 > 수집품 > 모형/프라모델/피규어 > 피규어",
                 "searchText": "",
             },
             {
                 "categoryId": 2,
                 "categoryCode": "B",
-                "fullPath": "\ub3c4\uc11c > \uc18c\uc124",
+                "fullPath": "도서 > 소설",
                 "searchText": "",
             },
         ]
 
         adjusted_scores = apply_body_keyword_category_bonus(
-            "\ucc45 \uc77d\ub294 \ubbf8\ud53c \ubbf8\ub2c8\ud53c\uaddc\uc5b4",
+            "책 읽는 미피 미니피규어",
             scores,
             categories,
         )
 
         self.assertGreater(adjusted_scores[0], scores[0])
-        self.assertEqual(float(adjusted_scores[1]), float(scores[1]))
+        self.assertLess(adjusted_scores[1], scores[1])
 
     def test_exact_figure_leaf_gets_extra_bonus(self) -> None:
         scores = np.array([0.4, 0.4], dtype=np.float32)
@@ -38,19 +38,44 @@ class BodyKeywordCategoryBonusTest(unittest.TestCase):
             {
                 "categoryId": 1,
                 "categoryCode": "A",
-                "fullPath": "\uc0dd\ud65c/\uac74\uac15 > \uc218\uc9d1\ud488 > \ubaa8\ud615/\ud504\ub77c\ubaa8\ub378/\ud53c\uaddc\uc5b4 > \ud504\ub77c\ubaa8\ub378",
+                "fullPath": "생활/건강 > 수집품 > 모형/프라모델/피규어 > 프라모델",
                 "searchText": "",
             },
             {
                 "categoryId": 2,
                 "categoryCode": "B",
-                "fullPath": "\uc0dd\ud65c/\uac74\uac15 > \uc218\uc9d1\ud488 > \ubaa8\ud615/\ud504\ub77c\ubaa8\ub378/\ud53c\uaddc\uc5b4 > \ud53c\uaddc\uc5b4",
+                "fullPath": "생활/건강 > 수집품 > 모형/프라모델/피규어 > 피규어",
                 "searchText": "",
             },
         ]
 
         adjusted_scores = apply_body_keyword_category_bonus(
-            "\ubbf8\ud53c \ubbf8\ub2c8\ud53c\uaddc\uc5b4",
+            "미피 미니피규어",
+            scores,
+            categories,
+        )
+
+        self.assertGreater(adjusted_scores[1], adjusted_scores[0])
+
+    def test_body_keyword_has_priority_over_gunpla_like_word(self) -> None:
+        scores = np.array([0.65, 0.55], dtype=np.float32)
+        categories = [
+            {
+                "categoryId": 1,
+                "categoryCode": "A",
+                "fullPath": "생활/건강 > 수집품 > 모형/프라모델/피규어 > 프라모델",
+                "searchText": "",
+            },
+            {
+                "categoryId": 2,
+                "categoryCode": "B",
+                "fullPath": "생활/건강 > 문구/사무용품 > 필기도구 > 샤프",
+                "searchText": "",
+            },
+        ]
+
+        adjusted_scores = apply_body_keyword_category_bonus(
+            "산리오 빙글빙글 돔 샤프",
             scores,
             categories,
         )
