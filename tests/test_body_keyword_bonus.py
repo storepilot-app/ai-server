@@ -189,6 +189,27 @@ class BodyKeywordCategoryBonusTest(unittest.TestCase):
 
         self.assertGreater(adjusted_scores[0], adjusted_scores[1])
 
+    def test_clip_matches_clip_pin_category(self) -> None:
+        scores = np.array([0.45, 0.6], dtype=np.float32)
+        categories = [
+            {
+                "categoryId": 1,
+                "categoryCode": "A",
+                "fullPath": "생활/건강 > 문구/사무용품 > 문구용품 > 클립/핀",
+                "searchText": "",
+            },
+            {
+                "categoryId": 2,
+                "categoryCode": "B",
+                "fullPath": "생활/건강 > 생활용품 > 생활잡화",
+                "searchText": "",
+            },
+        ]
+
+        adjusted_scores = apply_body_keyword_category_bonus("컬러 클립 세트", scores, categories)
+
+        self.assertGreater(adjusted_scores[0], adjusted_scores[1])
+
 
 if __name__ == "__main__":
     unittest.main()
