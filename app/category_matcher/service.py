@@ -149,18 +149,13 @@ def prediction_from_auto_accept(
         fullPath=accepted.fullPath,
         score=accepted.maxSimilarity,
     )
-    candidates = [selected] + [
-        candidate
-        for candidate in item.candidates
-        if candidate.categoryId != selected.categoryId
-    ]
     return PredictionItem(
         rowId=item.product.rowId,
         categoryId=selected.categoryId,
         categoryCode=selected.categoryCode,
         fullPath=selected.fullPath,
         score=selected.score,
-        candidates=candidates[:10],
+        candidates=item.candidates,
         llmUsed=False,
         llmSelectedCategory=None,
         llmStatus="AUTO_SELECTED",

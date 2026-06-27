@@ -87,6 +87,8 @@ class ProductEvidenceTest(unittest.TestCase):
 
         self.assertEqual("PRODUCT_AUTO_ACCEPT", result[0].decisionSource)
         self.assertEqual("AUTO_SELECTED", result[0].llmStatus)
+        self.assertEqual(1, len(result[0].candidates))
+        self.assertNotEqual(result[0].score, result[0].candidates[0].score)
         llm.assert_called_once_with([])
 
 
