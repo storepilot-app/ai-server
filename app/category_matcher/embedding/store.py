@@ -1,10 +1,18 @@
 import json
 
 import numpy as np
+import torch
 from sentence_transformers import SentenceTransformer
 
 from app.category_matcher.schemas import CategoryItem
-from app.category_matcher.config.settings import CACHE_ROOT, MODEL_CACHE_KEY, MODEL_NAME
+from app.category_matcher.config.settings import (
+    CACHE_ROOT,
+    EMBEDDING_BATCH_SIZE,
+    EMBEDDING_DEVICE,
+    EMBEDDING_USE_FP16,
+    MODEL_CACHE_KEY,
+    MODEL_NAME,
+)
 
 
 _model: SentenceTransformer | None = None
@@ -13,7 +21,10 @@ _model: SentenceTransformer | None = None
 def get_model() -> SentenceTransformer:
     global _model
     if _model is None:
-        _model = SentenceTransformer(MODEL_NAME)
+        device = _resolve_device()
+        _model = SentenceTransformer(MODEL_NAME, device=device)
+        if device == "cuda" and EMBEDDING_USE_FP16:
+            _model.half()
     return _model
 
 
@@ -21,8 +32,23 @@ def embed(texts: list[str]) -> np.ndarray:
     if not texts:
         return np.empty((0, 0), dtype=np.float32)
 
-    vectors = get_model().encode(texts, normalize_embeddings=True, batch_size=64, show_progress_bar=False)
+    vectors = get_model().encode(
+        texts,
+        normalize_embeddings=True,
+        batch_size=EMBEDDING_BATCH_SIZE,
+        show_progress_bar=False,
+    )
     return np.asarray(vectors, dtype=np.float32)
+
+
+def _resolve_device() -> str:
+    if EMBEDDING_DEVICE == "auto":
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    if EMBEDDING_DEVICE == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("STOREPILOT_EMBEDDING_DEVICE=cuda but CUDA is unavailable.")
+    if EMBEDDING_DEVICE not in {"cpu", "cuda"}:
+        raise ValueError(f"Unsupported embedding device: {EMBEDDING_DEVICE}")
+    return EMBEDDING_DEVICE
 
 
 def rebuild_category_cache(version_id: int, categories: list[CategoryItem]) -> None:

@@ -2,10 +2,22 @@ import json
 import logging
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from app.category_matcher.schemas import PredictionCandidate, ProductItem
-from app.category_matcher.config.settings import LLM_API_KEY, LLM_BASE_URL, LLM_BATCH_SIZE, LLM_MODEL, LLM_TIMEOUT_SECONDS
+from app.category_matcher.schemas import (
+    CategoryDistributionItem,
+    PredictionCandidate,
+    ProductItem,
+    SimilarProductItem,
+)
+from app.category_matcher.config.settings import (
+    LLM_API_KEY,
+    LLM_BASE_URL,
+    LLM_BATCH_SIZE,
+    LLM_MODEL,
+    LLM_THRESHOLD,
+    LLM_TIMEOUT_SECONDS,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -23,6 +35,8 @@ class LlmSelection:
 class ProductCandidates:
     product: ProductItem
     candidates: list[PredictionCandidate]
+    similar_products: list[SimilarProductItem] = field(default_factory=list)
+    category_distribution: list[CategoryDistributionItem] = field(default_factory=list)
 
 
 def select_candidate_with_llm(product_name: str, candidates: list[PredictionCandidate]) -> LlmSelection:
@@ -129,6 +143,8 @@ def request_llm_category_decisions(items: list[ProductCandidates]) -> list[dict]
                 "role": "system",
                 "content": (
                     "You are a strict Naver shopping category judge. "
+                    "Use similar products and their category distribution as evidence, but select only from candidates. "
+                    "A high similarity alone is not proof when nearby products disagree. "
                     "For each item, prefer choosing the single best category when one candidate is clearly better than the others. "
                     "Reject all candidates only when every candidate is unrelated or too broad. "
                     "Return compact JSON only with key results. results must be an array of objects with keys: "
@@ -144,6 +160,27 @@ def request_llm_category_decisions(items: list[ProductCandidates]) -> list[dict]
                             {
                                 "rowId": item.product.rowId,
                                 "productName": item.product.productName,
+                                "similarProductEvidenceStrong": bool(
+                                    item.similar_products
+                                    and item.similar_products[0].similarity >= LLM_THRESHOLD
+                                ),
+                                "similarProducts": [
+                                    {
+                                        "productName": product.productName,
+                                        "category": product.fullPath,
+                                        "similarity": round(product.similarity, 6),
+                                    }
+                                    for product in item.similar_products
+                                ],
+                                "categoryDistribution": [
+                                    {
+                                        "category": distribution.fullPath,
+                                        "support": round(distribution.support, 6),
+                                        "exampleCount": distribution.exampleCount,
+                                        "maxSimilarity": round(distribution.maxSimilarity, 6),
+                                    }
+                                    for distribution in item.category_distribution
+                                ],
                                 "candidates": [
                                     {
                                         "index": index,

@@ -61,6 +61,14 @@ Default model:
 BAAI/bge-m3
 ```
 
+CUDA is selected automatically when a CUDA-enabled PyTorch build is installed. Override it with:
+
+```env
+STOREPILOT_EMBEDDING_DEVICE=auto
+STOREPILOT_EMBEDDING_BATCH_SIZE=32
+STOREPILOT_EMBEDDING_USE_FP16=true
+```
+
 The cache is separated by model name, so old `multilingual-e5-small` embeddings will not be reused with BGE-M3.
 
 To temporarily switch models:
@@ -83,6 +91,45 @@ POST /ai/categories/predict
 ```
 
 Returns the Top 1 Naver category for each product name.
+
+## Historical Product Index
+
+Historical product workbooks use column `D` for the product name and column `T` for the user's my-category code. Build the initial index for the three workbooks in the StorePilot root with:
+
+```powershell
+uv run python -m scripts.rebuild_product_index `
+  --user-key uno1969 `
+  ..\List_20260627133027_uno1969_1.xlsx `
+  ..\List_20260627133027_uno1969_2.xlsx `
+  ..\List_20260627133027_uno1969_3.xlsx
+```
+
+The same rebuild is available through `POST /ai/categories/product-index/rebuild`. Spring Boot exposes the proxy API as `POST /api/v1/admin/training-products/rebuild`.
+
+Prediction searches the historical index for 20 products, collapses near duplicates, computes the category distribution from the complete set, and sends a category-diverse Top 5 to the LLM. A high-confidence consensus bypasses the LLM.
+
+```env
+STOREPILOT_AUTO_ACCEPT_THRESHOLD=0.95
+STOREPILOT_LLM_THRESHOLD=0.85
+STOREPILOT_CATEGORY_SUPPORT_THRESHOLD=0.75
+STOREPILOT_CATEGORY_MARGIN_THRESHOLD=0.15
+STOREPILOT_AUTO_ACCEPT_MIN_EXAMPLES=3
+STOREPILOT_PRODUCT_DUPLICATE_THRESHOLD=0.985
+STOREPILOT_PRODUCT_SEARCH_K=20
+STOREPILOT_PRODUCT_REPRESENTATIVE_K=5
+STOREPILOT_PRODUCT_MAX_PER_CATEGORY=2
+```
+
+`flat` is the default exact index and is appropriate for the current data size. Rebuild with HNSW when the collection grows to several hundred thousand products:
+
+```env
+STOREPILOT_PRODUCT_INDEX_TYPE=hnsw
+STOREPILOT_PRODUCT_HNSW_M=32
+STOREPILOT_PRODUCT_HNSW_EF_CONSTRUCTION=200
+STOREPILOT_PRODUCT_HNSW_EF_SEARCH=64
+```
+
+User corrections are persisted by Spring Boot and immediately appended to FAISS through `POST /api/v1/admin/training-products/feedback`.
 
 ## Spring Boot Integration
 

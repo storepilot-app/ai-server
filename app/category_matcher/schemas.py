@@ -24,9 +24,18 @@ class ProductItem(BaseModel):
     productName: str
 
 
+class MyCategoryMappingItem(BaseModel):
+    myCategoryCode: str
+    categoryId: int
+    categoryCode: str
+    fullPath: str
+
+
 class PredictRequest(BaseModel):
     versionId: int
+    userKey: str | None = None
     products: list[ProductItem] = Field(default_factory=list)
+    myCategoryMappings: list[MyCategoryMappingItem] = Field(default_factory=list)
 
 
 class PredictionCandidate(BaseModel):
@@ -34,6 +43,24 @@ class PredictionCandidate(BaseModel):
     categoryCode: str
     fullPath: str
     score: float
+
+
+class SimilarProductItem(BaseModel):
+    productName: str
+    myCategoryCode: str
+    categoryId: int
+    categoryCode: str
+    fullPath: str
+    similarity: float
+
+
+class CategoryDistributionItem(BaseModel):
+    categoryId: int
+    categoryCode: str
+    fullPath: str
+    support: float
+    exampleCount: int
+    maxSimilarity: float
 
 
 class PredictionItem(BaseModel):
@@ -47,7 +74,32 @@ class PredictionItem(BaseModel):
     llmSelectedCategory: str | None = None
     llmStatus: str = "SKIPPED"
     llmStatusDetail: str | None = None
+    decisionSource: str = "CATEGORY_EMBEDDING"
+    similarProducts: list[SimilarProductItem] = Field(default_factory=list)
+    categoryDistribution: list[CategoryDistributionItem] = Field(default_factory=list)
 
 
 class PredictResponse(BaseModel):
     results: list[PredictionItem]
+
+
+class ProductIndexRebuildResponse(BaseModel):
+    userKey: str
+    sourceCount: int
+    validRowCount: int
+    indexedProductCount: int
+    duplicateRowCount: int
+    conflictingTitleCount: int
+    message: str
+
+
+class ProductFeedbackRequest(BaseModel):
+    userKey: str
+    productName: str
+    myCategoryCode: str
+
+
+class ProductFeedbackResponse(BaseModel):
+    userKey: str
+    indexedProductCount: int
+    message: str
