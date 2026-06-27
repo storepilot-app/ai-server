@@ -38,6 +38,19 @@ class ProductCandidates:
     similar_products: list[SimilarProductItem] = field(default_factory=list)
     category_distribution: list[CategoryDistributionItem] = field(default_factory=list)
 
+    def selection_candidates(self) -> list[PredictionCandidate]:
+        if not self.similar_products:
+            return self.candidates
+        return [
+            PredictionCandidate(
+                categoryId=product.categoryId,
+                categoryCode=product.categoryCode,
+                fullPath=product.fullPath,
+                score=product.similarity,
+            )
+            for product in self.similar_products
+        ]
+
 
 def select_candidate_with_llm(product_name: str, candidates: list[PredictionCandidate]) -> LlmSelection:
     item = ProductCandidates(product=ProductItem(rowId=1, productName=product_name), candidates=candidates)
@@ -77,7 +90,10 @@ def select_candidates_chunk_with_llm(items: list[ProductCandidates]) -> dict[int
         if isinstance(decision, dict)
     }
     return {
-        item.product.rowId: selection_from_llm_decision(item.candidates, decisions_by_row_id.get(item.product.rowId))
+        item.product.rowId: selection_from_llm_decision(
+            item.selection_candidates(),
+            decisions_by_row_id.get(item.product.rowId),
+        )
         for item in items
     }
 
@@ -143,7 +159,9 @@ def request_llm_category_decisions(items: list[ProductCandidates]) -> list[dict]
                 "role": "system",
                 "content": (
                     "You are a strict Naver shopping category judge. "
-                    "Use similar products and their category distribution as evidence, but select only from candidates. "
+                    "When selectionSource is SIMILAR_PRODUCTS, choose the best category only from the similar-product candidates. "
+                    "When selectionSource is NAVER_CATEGORIES, choose only from the Naver category candidates. "
+                    "Use category distribution and Naver category references as supporting evidence. "
                     "A high similarity alone is not proof when nearby products disagree. "
                     "For each item, prefer choosing the single best category when one candidate is clearly better than the others. "
                     "Reject all candidates only when every candidate is unrelated or too broad. "
@@ -181,13 +199,19 @@ def request_llm_category_decisions(items: list[ProductCandidates]) -> list[dict]
                                     }
                                     for distribution in item.category_distribution
                                 ],
+                                "selectionSource": (
+                                    "SIMILAR_PRODUCTS" if item.similar_products else "NAVER_CATEGORIES"
+                                ),
                                 "candidates": [
+                                    _llm_candidate_payload(item, index)
+                                    for index, _ in enumerate(item.selection_candidates())
+                                ],
+                                "naverCategoryReferences": [
                                     {
-                                        "index": index,
                                         "fullPath": candidate.fullPath,
                                         "embeddingScore": candidate.score,
                                     }
-                                    for index, candidate in enumerate(item.candidates)
+                                    for candidate in item.candidates
                                 ],
                             }
                             for item in items
@@ -216,6 +240,21 @@ def request_llm_category_decisions(items: list[ProductCandidates]) -> list[dict]
     if not isinstance(results, list):
         raise ValueError("LLM response did not contain results array.")
     return results
+
+
+def _llm_candidate_payload(item: ProductCandidates, index: int) -> dict:
+    candidate = item.selection_candidates()[index]
+    payload = {
+        "index": index,
+        "fullPath": candidate.fullPath,
+    }
+    if item.similar_products:
+        product = item.similar_products[index]
+        payload["similarProductName"] = product.productName
+        payload["similarity"] = product.similarity
+    else:
+        payload["embeddingScore"] = candidate.score
+    return payload
 
 
 def chunks(items: list[ProductCandidates], size: int) -> list[list[ProductCandidates]]:

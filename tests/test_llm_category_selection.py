@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch
 
 from app.category_matcher.llm import judge as service
-from app.category_matcher.schemas import PredictionCandidate
+from app.category_matcher.schemas import PredictionCandidate, SimilarProductItem
 
 
 class LlmCategorySelectionTest(unittest.TestCase):
@@ -74,6 +74,34 @@ class LlmCategorySelectionTest(unittest.TestCase):
         request.assert_called_once()
         self.assertEqual(selections[10].status, "SELECTED")
         self.assertEqual(selections[20].status, "REJECTED")
+
+    def test_selects_category_from_similar_product_candidates(self) -> None:
+        item = service.ProductCandidates(
+            product=service.ProductItem(rowId=30, productName="말랑고구마 스틱"),
+            candidates=[
+                PredictionCandidate(categoryId=1, categoryCode="A", fullPath="식품 > 고구마", score=0.7),
+            ],
+            similar_products=[
+                SimilarProductItem(
+                    productName="강아지 고구마 스틱",
+                    myCategoryCode="MY-1",
+                    categoryId=2,
+                    categoryCode="B",
+                    fullPath="반려동물 > 강아지 간식 > 트릿/스틱",
+                    similarity=0.89,
+                ),
+            ],
+        )
+
+        with patch.object(service, "LLM_API_KEY", "test-key"), patch.object(
+            service,
+            "request_llm_category_decisions",
+            return_value=[{"rowId": 30, "matched": True, "selectedIndex": 0, "confidence": 0.9, "reason": "best"}],
+        ):
+            selection = service.select_candidates_with_llm_batch([item])[30]
+
+        self.assertEqual(2, selection.selected_candidate.categoryId)
+        self.assertEqual("반려동물 > 강아지 간식 > 트릿/스틱", selection.selected_candidate.fullPath)
 
 
 if __name__ == "__main__":
