@@ -39,7 +39,7 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 ## LLM Category Judge
 
-After BGE-M3 returns Top-10 category candidates, the AI server can call an OpenAI-compatible chat completions API for every product and ask the LLM to select the best candidate or reject all candidates.
+When product evidence does not meet the automatic acceptance policy, the AI server sends the category-diverse similar-product Top 5 to an OpenAI-compatible chat completions API. The LLM selects one of those product categories or rejects all candidates.
 
 Set these environment variables before running the server:
 
@@ -51,7 +51,7 @@ STOREPILOT_LLM_TIMEOUT_SECONDS=90
 STOREPILOT_LLM_BATCH_SIZE=30
 ```
 
-If `STOREPILOT_LLM_API_KEY` is empty, the server skips the LLM call and uses the embedding Top-1 result. If the LLM rejects all Top-10 candidates, the final category is returned as no match while the Top-10 candidates remain available for Excel review.
+If `STOREPILOT_LLM_API_KEY` is empty, no automatic fallback category is selected. If there are no resolved similar products, the result is returned as `NO_SIMILAR_PRODUCTS` without an LLM call.
 
 ## Embedding Model
 
@@ -84,13 +84,13 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 POST /ai/categories/rebuild
 ```
 
-Builds category embeddings for a Naver category version.
+Builds legacy Naver category embeddings. Product prediction no longer uses this cache.
 
 ```http
 POST /ai/categories/predict
 ```
 
-Returns the Top 1 Naver category for each product name.
+Returns an automatically accepted or LLM-selected category from the historical product index. Products without usable similar products return no match.
 
 ## Historical Product Index
 

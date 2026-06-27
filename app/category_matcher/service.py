@@ -51,35 +51,30 @@ def predict_categories(
     user_key: str | None = None,
     mappings: list[MyCategoryMappingItem] | None = None,
 ) -> list[PredictionItem]:
-    embeddings, categories = load_category_cache(version_id)
-    if len(categories) == 0:
-        return [empty_prediction(product) for product in products]
-
     queries = [preprocess_embedding_query(product.productName) for product in products]
     query_embeddings = embed(queries)
-    if query_embeddings.shape[1] != embeddings.shape[1]:
-        return [empty_prediction(product) for product in products]
-
-    scores = query_embeddings @ embeddings.T
-    product_candidates = build_product_candidates(products, categories, scores)
+    product_candidates = [ProductCandidates(product=product, candidates=[]) for product in products]
     product_hit_rows = search_similar_products_by_vectors(user_key, query_embeddings)
     resolved_items = [
         attach_product_evidence(item, mappings or [], hits)
         for item, hits in zip(product_candidates, product_hit_rows)
     ]
-    automatic_results: dict[int, PredictionItem] = {}
+    completed_results: dict[int, PredictionItem] = {}
     ambiguous_items: list[ProductCandidates] = []
 
     for item in resolved_items:
+        if not item.similar_products:
+            completed_results[item.product.rowId] = prediction_without_similar_products(item)
+            continue
         accepted = auto_accepted_category(item.category_distribution)
         if accepted is None:
             ambiguous_items.append(item)
             continue
-        automatic_results[item.product.rowId] = prediction_from_auto_accept(item, accepted)
+        completed_results[item.product.rowId] = prediction_from_auto_accept(item, accepted)
 
     llm_selections = select_candidates_with_llm_batch(ambiguous_items)
     return [
-        automatic_results.get(item.product.rowId)
+        completed_results.get(item.product.rowId)
         or prediction_from_selection(
             item,
             llm_selections.get(
@@ -89,6 +84,24 @@ def predict_categories(
         )
         for item in resolved_items
     ]
+
+
+def prediction_without_similar_products(item: ProductCandidates) -> PredictionItem:
+    return PredictionItem(
+        rowId=item.product.rowId,
+        categoryId=None,
+        categoryCode=None,
+        fullPath=None,
+        score=0.0,
+        candidates=[],
+        llmUsed=False,
+        llmSelectedCategory=None,
+        llmStatus="NO_SIMILAR_PRODUCTS",
+        llmStatusDetail=None,
+        decisionSource="NO_SIMILAR_PRODUCTS",
+        similarProducts=[],
+        categoryDistribution=[],
+    )
 
 
 def empty_prediction(product: ProductItem) -> PredictionItem:
@@ -180,7 +193,7 @@ def prediction_from_selection(item: ProductCandidates, llm_selection: LlmSelecti
             llmSelectedCategory=None,
             llmStatus=llm_selection.status,
             llmStatusDetail=llm_selection.detail,
-            decisionSource="LLM" if llm_selection.used else "CATEGORY_EMBEDDING",
+            decisionSource="LLM_SIMILAR_PRODUCTS" if llm_selection.used else "NO_MATCH",
             similarProducts=item.similar_products,
             categoryDistribution=item.category_distribution,
         )
@@ -196,7 +209,7 @@ def prediction_from_selection(item: ProductCandidates, llm_selection: LlmSelecti
         llmSelectedCategory=selected_candidate.fullPath if llm_selection.used else None,
         llmStatus=llm_selection.status,
         llmStatusDetail=llm_selection.detail,
-        decisionSource="LLM" if llm_selection.used else "CATEGORY_EMBEDDING",
+        decisionSource="LLM_SIMILAR_PRODUCTS" if llm_selection.used else "NO_MATCH",
         similarProducts=item.similar_products,
         categoryDistribution=item.category_distribution,
     )

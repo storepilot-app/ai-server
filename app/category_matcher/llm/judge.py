@@ -159,9 +159,8 @@ def request_llm_category_decisions(items: list[ProductCandidates]) -> list[dict]
                 "role": "system",
                 "content": (
                     "You are a strict Naver shopping category judge. "
-                    "When selectionSource is SIMILAR_PRODUCTS, choose the best category only from the similar-product candidates. "
-                    "When selectionSource is NAVER_CATEGORIES, choose only from the Naver category candidates. "
-                    "Use category distribution and Naver category references as supporting evidence. "
+                    "Choose the best category only from the similar-product candidates. "
+                    "Use the category distribution as supporting evidence. "
                     "A high similarity alone is not proof when nearby products disagree. "
                     "For each item, prefer choosing the single best category when one candidate is clearly better than the others. "
                     "Reject all candidates only when every candidate is unrelated or too broad. "
@@ -199,19 +198,10 @@ def request_llm_category_decisions(items: list[ProductCandidates]) -> list[dict]
                                     }
                                     for distribution in item.category_distribution
                                 ],
-                                "selectionSource": (
-                                    "SIMILAR_PRODUCTS" if item.similar_products else "NAVER_CATEGORIES"
-                                ),
+                                "selectionSource": "SIMILAR_PRODUCTS",
                                 "candidates": [
                                     _llm_candidate_payload(item, index)
                                     for index, _ in enumerate(item.selection_candidates())
-                                ],
-                                "naverCategoryReferences": [
-                                    {
-                                        "fullPath": candidate.fullPath,
-                                        "embeddingScore": candidate.score,
-                                    }
-                                    for candidate in item.candidates
                                 ],
                             }
                             for item in items
