@@ -66,14 +66,7 @@ class ProductEvidenceTest(unittest.TestCase):
             ProductSearchHit(f"전자 계산기 {index}", ("MY-A",), 0.99 - index * 0.005)
             for index in range(3)
         ]]
-        categories = [{
-            "categoryId": 1,
-            "categoryCode": "NAVER-A",
-            "fullPath": "생활 > 문구 > 계산기",
-            "searchText": "생활 문구 계산기",
-        }]
-
-        with patch.object(service, "load_category_cache", return_value=(np.asarray([[1.0, 0.0]], dtype=np.float32), categories)) as category_cache, patch.object(
+        with patch.object(
             service, "embed", return_value=np.asarray([[1.0, 0.0]], dtype=np.float32)
         ), patch.object(service, "search_similar_products_by_vectors", return_value=hits), patch.object(
             service, "select_candidates_with_llm_batch", return_value={}
@@ -88,11 +81,10 @@ class ProductEvidenceTest(unittest.TestCase):
         self.assertEqual("PRODUCT_AUTO_ACCEPT", result[0].decisionSource)
         self.assertEqual("AUTO_SELECTED", result[0].llmStatus)
         self.assertEqual([], result[0].candidates)
-        category_cache.assert_not_called()
         llm.assert_called_once_with([])
 
     def test_predict_returns_no_similar_products_without_category_search_or_llm(self):
-        with patch.object(service, "load_category_cache") as category_cache, patch.object(
+        with patch.object(
             service, "embed", return_value=np.asarray([[1.0, 0.0]], dtype=np.float32)
         ), patch.object(service, "search_similar_products_by_vectors", return_value=[[]]), patch.object(
             service, "select_candidates_with_llm_batch", return_value={}
@@ -107,7 +99,6 @@ class ProductEvidenceTest(unittest.TestCase):
         self.assertEqual("NO_SIMILAR_PRODUCTS", result[0].llmStatus)
         self.assertEqual("NO_SIMILAR_PRODUCTS", result[0].decisionSource)
         self.assertIsNone(result[0].categoryId)
-        category_cache.assert_not_called()
         llm.assert_called_once_with([])
 
 
