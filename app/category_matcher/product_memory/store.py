@@ -147,6 +147,7 @@ def search_similar_products_by_vectors(
     ]
 
 
+# 지나치게 유사한 후보 축약
 def _collapse_search_results(
     loaded: LoadedProductIndex,
     scores: np.ndarray,
