@@ -111,7 +111,7 @@ The same rebuild is available through `POST /ai/categories/product-index/rebuild
 Prediction searches the historical index for 20 products, collapses near duplicates, computes the category distribution from the complete set, and sends a category-diverse Top 5 to the LLM. A high-confidence consensus bypasses the LLM.
 
 ```env
-STOREPILOT_AUTO_ACCEPT_THRESHOLD=0.95
+STOREPILOT_AUTO_ACCEPT_THRESHOLD=0.90
 STOREPILOT_LLM_THRESHOLD=0.85
 STOREPILOT_CATEGORY_SUPPORT_THRESHOLD=0.75
 STOREPILOT_CATEGORY_MARGIN_THRESHOLD=0.15
