@@ -1,4 +1,5 @@
 from app.category_matcher.product_memory.store import (
+    NaverCategoryLabel,
     add_product_feedback,
     rebuild_product_index,
     search_similar_products,
@@ -7,6 +8,7 @@ from app.category_matcher.product_memory.store import (
 )
 
 __all__ = [
+    "NaverCategoryLabel",
     "add_product_feedback",
     "rebuild_product_index",
     "search_similar_products",

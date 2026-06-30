@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 import zipfile
@@ -11,10 +12,10 @@ from app.category_matcher.product_memory import store
 
 class ProductIndexStoreTest(unittest.TestCase):
     def setUp(self):
-        store._loaded_indexes.clear()
+        store._loaded_index = None
 
     def tearDown(self):
-        store._loaded_indexes.clear()
+        store._loaded_index = None
 
     def test_rebuild_search_and_feedback(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -32,17 +33,28 @@ class ProductIndexStoreTest(unittest.TestCase):
             with patch.object(store, "PRODUCT_CACHE_ROOT", root / "cache"), patch.object(
                 store, "embed", side_effect=self._fake_embed
             ):
-                result = store.rebuild_product_index("user-a", [workbook])
-                hits = store.search_similar_products("user-a", "휴대용 계산기")
-                count = store.add_product_feedback("user-a", "전자 계산기", "MY-C")
-                loaded = store._load_index("user-a")
+                category_a = store.NaverCategoryLabel(1, "NAVER-A", "생활 > 문구 > 계산기")
+                category_b = store.NaverCategoryLabel(2, "NAVER-B", "생활 > 완구 > 보드게임")
+                category_c = store.NaverCategoryLabel(3, "NAVER-C", "생활 > 문구 > 전자계산기")
+                result = store.rebuild_product_index(
+                    [workbook],
+                    {"MY-A": category_a, "MY-B": category_b},
+                )
+                metadata_path = root / "cache" / store.MODEL_CACHE_KEY / "shared" / "products.json"
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                hits = store.search_similar_products("휴대용 계산기")
+                count = store.add_product_feedback("전자 계산기", category_c)
+                loaded = store._load_index()
 
             self.assertEqual(3, result.valid_row_count)
             self.assertEqual(2, result.indexed_product_count)
             self.assertEqual(1, result.duplicate_row_count)
+            self.assertEqual(2, metadata["schemaVersion"])
+            self.assertIn("naverCategories", metadata["products"][0])
+            self.assertNotIn("myCategoryCodes", metadata["products"][0])
             self.assertEqual("전자 계산기", hits[0].product_name)
             self.assertEqual(2, count)
-            self.assertEqual(("MY-C",), loaded.products[0].my_category_codes)
+            self.assertEqual((category_c,), loaded.products[0].categories)
 
     @staticmethod
     def _fake_embed(texts):
