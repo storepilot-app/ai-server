@@ -84,7 +84,6 @@ class LlmCategorySelectionTest(unittest.TestCase):
             similar_products=[
                 SimilarProductItem(
                     productName="강아지 고구마 스틱",
-                    myCategoryCode="MY-1",
                     categoryId=2,
                     categoryCode="B",
                     fullPath="반려동물 > 강아지 간식 > 트릿/스틱",

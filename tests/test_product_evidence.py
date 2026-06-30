@@ -5,36 +5,23 @@ import numpy as np
 
 from app.category_matcher import service
 from app.category_matcher.decision.policy import auto_accepted_category
-from app.category_matcher.product_memory.store import ProductSearchHit
+from app.category_matcher.product_memory.store import NaverCategoryLabel, ProductSearchHit
 from app.category_matcher.retrieval.evidence import build_product_evidence
-from app.category_matcher.schemas import MyCategoryMappingItem
 from app.category_matcher.schemas import ProductItem
 
 
 class ProductEvidenceTest(unittest.TestCase):
     def setUp(self):
-        self.mappings = [
-            MyCategoryMappingItem(
-                myCategoryCode="MY-A",
-                categoryId=1,
-                categoryCode="NAVER-A",
-                fullPath="생활 > 문구 > 계산기",
-            ),
-            MyCategoryMappingItem(
-                myCategoryCode="MY-B",
-                categoryId=2,
-                categoryCode="NAVER-B",
-                fullPath="생활 > 완구 > 보드게임",
-            ),
-        ]
+        self.category_a = NaverCategoryLabel(1, "NAVER-A", "생활 > 문구 > 계산기")
+        self.category_b = NaverCategoryLabel(2, "NAVER-B", "생활 > 완구 > 보드게임")
 
     def test_distribution_uses_all_hits_but_top5_is_category_diverse(self):
         hits = [
-            ProductSearchHit(f"계산기 {index}", ("MY-A",), 0.99 - index * 0.001)
+            ProductSearchHit(f"계산기 {index}", (self.category_a,), 0.99 - index * 0.001)
             for index in range(5)
-        ] + [ProductSearchHit("주사위", ("MY-B",), 0.90)]
+        ] + [ProductSearchHit("주사위", (self.category_b,), 0.90)]
 
-        evidence = build_product_evidence(hits, self.mappings)
+        evidence = build_product_evidence(hits)
 
         self.assertEqual(3, len(evidence.similar_products))
         self.assertEqual(2, sum(item.categoryId == 1 for item in evidence.similar_products))
@@ -42,19 +29,19 @@ class ProductEvidenceTest(unittest.TestCase):
         self.assertEqual(5, evidence.distribution[0].exampleCount)
 
     def test_conflicting_title_is_excluded_from_category_evidence(self):
-        hits = [ProductSearchHit("충돌 상품", ("MY-A", "MY-B"), 0.99)]
+        hits = [ProductSearchHit("충돌 상품", (self.category_a, self.category_b), 0.99)]
 
-        evidence = build_product_evidence(hits, self.mappings)
+        evidence = build_product_evidence(hits)
 
         self.assertEqual([], evidence.similar_products)
         self.assertEqual([], evidence.distribution)
 
     def test_auto_accept_requires_similarity_consensus_and_examples(self):
         hits = [
-            ProductSearchHit(f"전자 계산기 {index}", ("MY-A",), 0.99 - index * 0.005)
+            ProductSearchHit(f"전자 계산기 {index}", (self.category_a,), 0.99 - index * 0.005)
             for index in range(3)
         ]
-        evidence = build_product_evidence(hits, self.mappings)
+        evidence = build_product_evidence(hits)
 
         accepted = auto_accepted_category(evidence.distribution)
 
@@ -63,7 +50,7 @@ class ProductEvidenceTest(unittest.TestCase):
 
     def test_predict_skips_llm_when_product_evidence_is_auto_accepted(self):
         hits = [[
-            ProductSearchHit(f"전자 계산기 {index}", ("MY-A",), 0.99 - index * 0.005)
+            ProductSearchHit(f"전자 계산기 {index}", (self.category_a,), 0.99 - index * 0.005)
             for index in range(3)
         ]]
         with patch.object(
@@ -74,8 +61,6 @@ class ProductEvidenceTest(unittest.TestCase):
             result = service.predict_categories(
                 1,
                 [ProductItem(rowId=1, productName="휴대용 전자 계산기")],
-                "user-a",
-                self.mappings,
             )
 
         self.assertEqual("PRODUCT_AUTO_ACCEPT", result[0].decisionSource)
@@ -92,8 +77,6 @@ class ProductEvidenceTest(unittest.TestCase):
             result = service.predict_categories(
                 1,
                 [ProductItem(rowId=1, productName="검색 결과 없는 상품")],
-                "user-a",
-                self.mappings,
             )
 
         self.assertEqual("NO_SIMILAR_PRODUCTS", result[0].llmStatus)

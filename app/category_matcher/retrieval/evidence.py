@@ -9,10 +9,9 @@ from app.category_matcher.config.settings import (
     PRODUCT_MAX_PER_CATEGORY,
     PRODUCT_REPRESENTATIVE_K,
 )
-from app.category_matcher.product_memory.store import ProductSearchHit
+from app.category_matcher.product_memory.store import NaverCategoryLabel, ProductSearchHit
 from app.category_matcher.schemas import (
     CategoryDistributionItem,
-    MyCategoryMappingItem,
     SimilarProductItem,
 )
 
@@ -25,19 +24,12 @@ class ProductEvidence:
 
 def build_product_evidence(
     hits: list[ProductSearchHit],
-    mappings: list[MyCategoryMappingItem],
 ) -> ProductEvidence:
-    mappings_by_code = {mapping.myCategoryCode: mapping for mapping in mappings}
-    resolved: list[tuple[ProductSearchHit, MyCategoryMappingItem]] = []
+    resolved: list[tuple[ProductSearchHit, NaverCategoryLabel]] = []
 
     for hit in hits:
-        mapped = {
-            mapping.categoryId: mapping
-            for code in hit.my_category_codes
-            if (mapping := mappings_by_code.get(code)) is not None
-        }
-        if len(mapped) == 1:
-            resolved.append((hit, next(iter(mapped.values()))))
+        if len(hit.categories) == 1:
+            resolved.append((hit, hit.categories[0]))
 
     distribution = _calculate_distribution(resolved)
     representatives = _select_representatives(resolved)
@@ -45,7 +37,7 @@ def build_product_evidence(
 
 
 def _calculate_distribution(
-    resolved: list[tuple[ProductSearchHit, MyCategoryMappingItem]],
+    resolved: list[tuple[ProductSearchHit, NaverCategoryLabel]],
 ) -> list[CategoryDistributionItem]:
     if not resolved:
         return []
@@ -54,22 +46,22 @@ def _calculate_distribution(
     weights: dict[int, float] = defaultdict(float)
     counts: dict[int, int] = defaultdict(int)
     max_scores: dict[int, float] = defaultdict(float)
-    category_mapping: dict[int, MyCategoryMappingItem] = {}
+    category_mapping: dict[int, NaverCategoryLabel] = {}
 
     for hit, mapping in resolved:
         weight = math.exp((hit.similarity - max_score) / PRODUCT_DISTRIBUTION_TEMPERATURE)
-        weights[mapping.categoryId] += weight
-        counts[mapping.categoryId] += 1
-        max_scores[mapping.categoryId] = max(max_scores[mapping.categoryId], hit.similarity)
-        category_mapping[mapping.categoryId] = mapping
+        weights[mapping.category_id] += weight
+        counts[mapping.category_id] += 1
+        max_scores[mapping.category_id] = max(max_scores[mapping.category_id], hit.similarity)
+        category_mapping[mapping.category_id] = mapping
 
     total = sum(weights.values())
     return sorted(
         [
             CategoryDistributionItem(
                 categoryId=category_id,
-                categoryCode=category_mapping[category_id].categoryCode,
-                fullPath=category_mapping[category_id].fullPath,
+                categoryCode=category_mapping[category_id].category_code,
+                fullPath=category_mapping[category_id].full_path,
                 support=weight / total,
                 exampleCount=counts[category_id],
                 maxSimilarity=max_scores[category_id],
@@ -82,25 +74,24 @@ def _calculate_distribution(
 
 
 def _select_representatives(
-    resolved: list[tuple[ProductSearchHit, MyCategoryMappingItem]],
+    resolved: list[tuple[ProductSearchHit, NaverCategoryLabel]],
 ) -> list[SimilarProductItem]:
     category_counts: dict[int, int] = defaultdict(int)
     selected: list[SimilarProductItem] = []
 
     for hit, mapping in resolved:
-        if category_counts[mapping.categoryId] >= PRODUCT_MAX_PER_CATEGORY:
+        if category_counts[mapping.category_id] >= PRODUCT_MAX_PER_CATEGORY:
             continue
         selected.append(
             SimilarProductItem(
                 productName=hit.product_name,
-                myCategoryCode=hit.my_category_codes[0],
-                categoryId=mapping.categoryId,
-                categoryCode=mapping.categoryCode,
-                fullPath=mapping.fullPath,
+                categoryId=mapping.category_id,
+                categoryCode=mapping.category_code,
+                fullPath=mapping.full_path,
                 similarity=hit.similarity,
             )
         )
-        category_counts[mapping.categoryId] += 1
+        category_counts[mapping.category_id] += 1
         if len(selected) >= PRODUCT_REPRESENTATIVE_K:
             break
     return selected

@@ -33,9 +33,7 @@ class MyCategoryMappingItem(BaseModel):
 
 class PredictRequest(BaseModel):
     versionId: int
-    userKey: str | None = None
     products: list[ProductItem] = Field(default_factory=list)
-    myCategoryMappings: list[MyCategoryMappingItem] = Field(default_factory=list)
 
 
 class PredictionCandidate(BaseModel):
@@ -47,7 +45,6 @@ class PredictionCandidate(BaseModel):
 
 class SimilarProductItem(BaseModel):
     productName: str
-    myCategoryCode: str
     categoryId: int
     categoryCode: str
     fullPath: str
@@ -86,7 +83,9 @@ class PredictResponse(BaseModel):
 class ProductIndexRebuildResponse(BaseModel):
     userKey: str
     sourceCount: int
+    sourceRowCount: int
     validRowCount: int
+    unmappedRowCount: int
     indexedProductCount: int
     duplicateRowCount: int
     conflictingTitleCount: int
@@ -96,7 +95,9 @@ class ProductIndexRebuildResponse(BaseModel):
 class ProductFeedbackRequest(BaseModel):
     userKey: str
     productName: str
-    myCategoryCode: str
+    categoryId: int
+    categoryCode: str
+    fullPath: str
 
 
 class ProductFeedbackResponse(BaseModel):

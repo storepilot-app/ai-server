@@ -20,7 +20,6 @@ from app.category_matcher.product_memory.store import ProductSearchHit, search_s
 from app.category_matcher.retrieval.evidence import build_product_evidence
 from app.category_matcher.schemas import (
     CategoryDistributionItem,
-    MyCategoryMappingItem,
     PredictionCandidate,
     PredictionItem,
     ProductItem,
@@ -30,15 +29,13 @@ from app.category_matcher.schemas import (
 def predict_categories(
     version_id: int,
     products: list[ProductItem],
-    user_key: str | None = None,
-    mappings: list[MyCategoryMappingItem] | None = None,
 ) -> list[PredictionItem]:
     queries = [preprocess_embedding_query(product.productName) for product in products]
     query_embeddings = embed(queries)
     product_candidates = [ProductCandidates(product=product, candidates=[]) for product in products]
-    product_hit_rows = search_similar_products_by_vectors(user_key, query_embeddings)
+    product_hit_rows = search_similar_products_by_vectors(query_embeddings)
     resolved_items = [
-        attach_product_evidence(item, mappings or [], hits)
+        attach_product_evidence(item, hits)
         for item, hits in zip(product_candidates, product_hit_rows)
     ]
     completed_results: dict[int, PredictionItem] = {}
@@ -88,10 +85,9 @@ def prediction_without_similar_products(item: ProductCandidates) -> PredictionIt
 
 def attach_product_evidence(
     item: ProductCandidates,
-    mappings: list[MyCategoryMappingItem],
     hits: list[ProductSearchHit],
 ) -> ProductCandidates:
-    evidence = build_product_evidence(hits, mappings)
+    evidence = build_product_evidence(hits)
     return ProductCandidates(
         product=item.product,
         candidates=item.candidates,

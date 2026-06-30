@@ -94,22 +94,24 @@ Returns an automatically accepted or LLM-selected category from the historical p
 
 ## Historical Product Index
 
-Historical product workbooks use column `D` for the product name and column `T` for the user's my-category code. Build the initial index for the three workbooks in the StorePilot root with:
+Historical product workbooks use column `D` for the product name and column `T` for the source user's my-category code. During rebuild, each my-category code is resolved to a Naver category ID, code, and full path. Only the resolved Naver category label is stored in the shared FAISS metadata.
+
+The command-line rebuild requires a JSON array containing `myCategoryCode`, `categoryId`, `categoryCode`, and `fullPath`:
 
 ```powershell
 uv run python -m scripts.rebuild_product_index `
-  --user-key uno1969 `
+  --mapping-json .\category-mappings.json `
   ..\List_20260627133027_uno1969_1.xlsx `
   ..\List_20260627133027_uno1969_2.xlsx `
   ..\List_20260627133027_uno1969_3.xlsx
 ```
 
-The same rebuild is available through `POST /ai/categories/product-index/rebuild`. Spring Boot exposes the proxy API as `POST /api/v1/admin/training-products/rebuild`.
+The same rebuild is available through `POST /ai/categories/product-index/rebuild`. Spring Boot exposes the proxy API as `POST /api/v1/admin/training-products/rebuild`; its `userKey` is used only to resolve the source my-category codes while rebuilding. The resulting index is stored at `ai-cache/products/<model>/shared` and all users search the same index.
 
 Prediction searches the historical index for 20 products, collapses near duplicates, computes the category distribution from the complete set, and sends a category-diverse Top 5 to the LLM. A high-confidence consensus bypasses the LLM.
 
 ```env
-STOREPILOT_AUTO_ACCEPT_THRESHOLD=0.95
+STOREPILOT_AUTO_ACCEPT_THRESHOLD=0.90
 STOREPILOT_LLM_THRESHOLD=0.85
 STOREPILOT_CATEGORY_SUPPORT_THRESHOLD=0.75
 STOREPILOT_CATEGORY_MARGIN_THRESHOLD=0.15
