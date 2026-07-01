@@ -21,7 +21,7 @@ from app.category_matcher.config.settings import (
 )
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn.error").getChild("storepilot.category_matcher.llm")
 
 
 @dataclass(frozen=True)

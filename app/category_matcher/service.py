@@ -29,7 +29,7 @@ from app.category_matcher.schemas import (
 )
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn.error").getChild("storepilot.category_matcher")
 
 
 def predict_categories(
