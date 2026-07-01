@@ -3,6 +3,7 @@ import logging
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
+from time import perf_counter
 
 from app.category_matcher.schemas import (
     CategoryDistributionItem,
@@ -62,8 +63,28 @@ def select_candidates_with_llm_batch(items: list[ProductCandidates]) -> dict[int
     if not items:
         return selections
 
-    for chunk in chunks(items, max(1, LLM_BATCH_SIZE)):
-        selections.update(select_candidates_chunk_with_llm(chunk))
+    batch_started_at = perf_counter()
+    item_chunks = list(chunks(items, max(1, LLM_BATCH_SIZE)))
+    for chunk_index, chunk in enumerate(item_chunks, start=1):
+        chunk_started_at = perf_counter()
+        chunk_selections = select_candidates_chunk_with_llm(chunk)
+        selections.update(chunk_selections)
+        logger.info(
+            "llm_category_chunk_timing chunk=%d/%d items=%d selected=%d rejected=%d failed=%d elapsed_ms=%.1f",
+            chunk_index,
+            len(item_chunks),
+            len(chunk),
+            sum(selection.status == "SELECTED" for selection in chunk_selections.values()),
+            sum(selection.status == "REJECTED" for selection in chunk_selections.values()),
+            sum(selection.status == "FAILED" for selection in chunk_selections.values()),
+            elapsed_ms(chunk_started_at),
+        )
+    logger.info(
+        "llm_category_batch_timing items=%d chunks=%d elapsed_ms=%.1f",
+        len(items),
+        len(item_chunks),
+        elapsed_ms(batch_started_at),
+    )
     return selections
 
 
@@ -212,17 +233,28 @@ def request_llm_category_decisions(items: list[ProductCandidates]) -> list[dict]
             },
         ],
     }
+    request_data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(
         f"{LLM_BASE_URL}/chat/completions",
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        data=request_data,
         headers={
             "Authorization": f"Bearer {LLM_API_KEY}",
             "Content-Type": "application/json",
         },
         method="POST",
     )
+    request_started_at = perf_counter()
     with urllib.request.urlopen(request, timeout=LLM_TIMEOUT_SECONDS) as response:
-        response_body = json.loads(response.read().decode("utf-8"))
+        response_bytes = response.read()
+        response_body = json.loads(response_bytes.decode("utf-8"))
+    logger.info(
+        "openai_category_request_timing model=%s items=%d request_bytes=%d response_bytes=%d elapsed_ms=%.1f",
+        LLM_MODEL,
+        len(items),
+        len(request_data),
+        len(response_bytes),
+        elapsed_ms(request_started_at),
+    )
 
     content = response_body["choices"][0]["message"]["content"]
     parsed = parse_llm_json(content)
@@ -230,6 +262,10 @@ def request_llm_category_decisions(items: list[ProductCandidates]) -> list[dict]
     if not isinstance(results, list):
         raise ValueError("LLM response did not contain results array.")
     return results
+
+
+def elapsed_ms(started_at: float) -> float:
+    return (perf_counter() - started_at) * 1000
 
 
 def _llm_candidate_payload(item: ProductCandidates, index: int) -> dict:
