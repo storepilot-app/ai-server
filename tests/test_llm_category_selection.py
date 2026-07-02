@@ -100,8 +100,11 @@ class LlmCategorySelectionTest(unittest.TestCase):
 
         request = urlopen.call_args.args[0]
         payload = json.loads(request.data.decode("utf-8"))
+        system_prompt = payload["messages"][0]["content"]
         user_payload = json.loads(payload["messages"][1]["content"])
         compact_item = user_payload["x"][0]
+        self.assertIn("exact product type and primary purpose", system_prompt)
+        self.assertIn("matched=false", system_prompt)
         self.assertEqual({"id", "n", "o"}, set(compact_item))
         self.assertNotIn("similarProducts", request.data.decode("utf-8"))
         self.assertNotIn("candidates", request.data.decode("utf-8"))

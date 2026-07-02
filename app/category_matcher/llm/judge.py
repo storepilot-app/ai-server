@@ -197,7 +197,10 @@ def request_llm_category_decisions(items: list[ProductCandidates]) -> list[dict]
                 "content": (
                     "Choose one Naver category option per product. "
                     "o=[index,similar product,category,similarity]. "
-                    "Prefer the clearly best option; reject only if all are unrelated. "
+                    "Select only when the exact product type and primary purpose clearly match. "
+                    "Reject accessories versus main products, related but different products, broad categories, and uncertain matches. "
+                    "Brand, model, style, size, or similarity alone is insufficient. "
+                    "If no option is a strong match, set matched=false and selectedIndex=null. "
                     "Return JSON only: "
                     "{\"results\":[{\"rowId\":integer,\"matched\":boolean,\"selectedIndex\":integer|null}]}"
                 ),
