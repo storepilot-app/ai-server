@@ -1,9 +1,10 @@
+import json
 import unittest
 from threading import Barrier, Lock
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from app.category_matcher.llm import judge as service
-from app.category_matcher.schemas import PredictionCandidate, SimilarProductItem
+from app.category_matcher.schemas import CategoryDistributionItem, PredictionCandidate, SimilarProductItem
 
 
 class LlmCategorySelectionTest(unittest.TestCase):
@@ -45,6 +46,68 @@ class LlmCategorySelectionTest(unittest.TestCase):
         self.assertEqual(selection.selected_candidate, candidates[1])
         self.assertTrue(selection.used)
         self.assertEqual(selection.status, "SELECTED")
+
+    def test_accepts_compact_llm_response(self) -> None:
+        candidate = PredictionCandidate(categoryId=1, categoryCode="A", fullPath="A > B", score=0.7)
+
+        selection = service.selection_from_llm_decision(
+            [candidate],
+            {"id": 1, "m": True, "i": 0},
+        )
+
+        self.assertEqual(candidate, selection.selected_candidate)
+        self.assertEqual("SELECTED", selection.status)
+
+    def test_sends_compact_payload_without_duplicate_candidate_data(self) -> None:
+        item = service.ProductCandidates(
+            product=service.ProductItem(rowId=7, productName="compact product"),
+            candidates=[],
+            similar_products=[
+                SimilarProductItem(
+                    productName="similar product",
+                    categoryId=1,
+                    categoryCode="A",
+                    fullPath="A > B",
+                    similarity=0.912345,
+                ),
+            ],
+            category_distribution=[
+                CategoryDistributionItem(
+                    categoryId=1,
+                    categoryCode="A",
+                    fullPath="A > B",
+                    support=0.8,
+                    exampleCount=4,
+                    maxSimilarity=0.912345,
+                ),
+            ],
+        )
+        response_body = {
+            "choices": [{
+                "message": {
+                    "content": '{"results":[{"rowId":7,"matched":true,"selectedIndex":0}]}'
+                }
+            }],
+            "usage": {"prompt_tokens": 100, "completion_tokens": 10},
+        }
+        response = MagicMock()
+        response.read.return_value = json.dumps(response_body).encode("utf-8")
+        context_manager = MagicMock()
+        context_manager.__enter__.return_value = response
+
+        with patch.object(service.urllib.request, "urlopen", return_value=context_manager) as urlopen:
+            decisions = service.request_llm_category_decisions([item])
+
+        request = urlopen.call_args.args[0]
+        payload = json.loads(request.data.decode("utf-8"))
+        user_payload = json.loads(payload["messages"][1]["content"])
+        compact_item = user_payload["x"][0]
+        self.assertEqual({"id", "n", "o"}, set(compact_item))
+        self.assertNotIn("similarProducts", request.data.decode("utf-8"))
+        self.assertNotIn("candidates", request.data.decode("utf-8"))
+        self.assertNotIn("categoryDistribution", request.data.decode("utf-8"))
+        self.assertEqual([[0, "similar product", "A > B", 0.9123]], compact_item["o"])
+        self.assertEqual([{"rowId": 7, "matched": True, "selectedIndex": 0}], decisions)
 
     def test_batches_multiple_products_in_one_llm_request(self) -> None:
         items = [

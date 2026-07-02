@@ -18,7 +18,6 @@ from app.category_matcher.config.settings import (
     LLM_BATCH_SIZE,
     LLM_MAX_CONCURRENCY,
     LLM_MODEL,
-    LLM_THRESHOLD,
     LLM_TIMEOUT_SECONDS,
 )
 
@@ -123,7 +122,7 @@ def select_candidates_chunk_with_llm(items: list[ProductCandidates]) -> dict[int
         }
 
     decisions_by_row_id = {
-        decision.get("rowId"): decision
+        decision.get("id", decision.get("rowId")): decision
         for decision in decisions
         if isinstance(decision, dict)
     }
@@ -145,10 +144,10 @@ def fallback_llm_selection(candidates: list[PredictionCandidate], status: str, d
 def selection_from_llm_decision(candidates: list[PredictionCandidate], decision: dict | None) -> LlmSelection:
     if decision is None:
         return fallback_llm_selection(candidates, "FAILED", "LLM response did not include this rowId.")
-    if decision.get("matched") is not True:
+    if decision.get("m", decision.get("matched")) is not True:
         return LlmSelection(selected_candidate=None, used=True, status="REJECTED")
 
-    selected_index = decision.get("selectedIndex")
+    selected_index = decision.get("i", decision.get("selectedIndex"))
     if not isinstance(selected_index, int) or selected_index < 0 or selected_index >= len(candidates):
         return LlmSelection(
             selected_candidate=candidates[0],
@@ -196,50 +195,29 @@ def request_llm_category_decisions(items: list[ProductCandidates]) -> list[dict]
             {
                 "role": "system",
                 "content": (
-                    "You are a strict Naver shopping category judge. "
-                    "Choose the best category only from the similar-product candidates. "
-                    "Use the category distribution as supporting evidence. "
-                    "A high similarity alone is not proof when nearby products disagree. "
-                    "For each item, prefer choosing the single best category when one candidate is clearly better than the others. "
-                    "Reject all candidates only when every candidate is unrelated or too broad. "
-                    "Return compact JSON only with key results. results must be an array of objects with keys: "
-                    "rowId(integer), matched(boolean), selectedIndex(integer or null), confidence(number from 0 to 1), reason(string). "
-                    "Keep each reason under 20 Korean characters."
+                    "Choose one Naver category option per product. "
+                    "o=[index,similar product,category,similarity]. "
+                    "Prefer the clearly best option; reject only if all are unrelated. "
+                    "Return JSON only: "
+                    "{\"results\":[{\"rowId\":integer,\"matched\":boolean,\"selectedIndex\":integer|null}]}"
                 ),
             },
             {
                 "role": "user",
                 "content": json.dumps(
                     {
-                        "items": [
+                        "x": [
                             {
-                                "rowId": item.product.rowId,
-                                "productName": item.product.productName,
-                                "similarProductEvidenceStrong": bool(
-                                    item.similar_products
-                                    and item.similar_products[0].similarity >= LLM_THRESHOLD
-                                ),
-                                "similarProducts": [
-                                    {
-                                        "productName": product.productName,
-                                        "category": product.fullPath,
-                                        "similarity": round(product.similarity, 6),
-                                    }
-                                    for product in item.similar_products
-                                ],
-                                "categoryDistribution": [
-                                    {
-                                        "category": distribution.fullPath,
-                                        "support": round(distribution.support, 6),
-                                        "exampleCount": distribution.exampleCount,
-                                        "maxSimilarity": round(distribution.maxSimilarity, 6),
-                                    }
-                                    for distribution in item.category_distribution
-                                ],
-                                "selectionSource": "SIMILAR_PRODUCTS",
-                                "candidates": [
-                                    _llm_candidate_payload(item, index)
-                                    for index, _ in enumerate(item.selection_candidates())
+                                "id": item.product.rowId,
+                                "n": item.product.productName,
+                                "o": [
+                                    [
+                                        index,
+                                        product.productName,
+                                        product.fullPath,
+                                        round(product.similarity, 4),
+                                    ]
+                                    for index, product in enumerate(item.similar_products)
                                 ],
                             }
                             for item in items
@@ -265,17 +243,20 @@ def request_llm_category_decisions(items: list[ProductCandidates]) -> list[dict]
         response_bytes = response.read()
         response_body = json.loads(response_bytes.decode("utf-8"))
     logger.info(
-        "openai_category_request_timing model=%s items=%d request_bytes=%d response_bytes=%d elapsed_ms=%.1f",
+        "openai_category_request_timing model=%s items=%d request_bytes=%d response_bytes=%d "
+        "prompt_tokens=%s completion_tokens=%s elapsed_ms=%.1f",
         LLM_MODEL,
         len(items),
         len(request_data),
         len(response_bytes),
+        response_body.get("usage", {}).get("prompt_tokens", "unknown"),
+        response_body.get("usage", {}).get("completion_tokens", "unknown"),
         elapsed_ms(request_started_at),
     )
 
     content = response_body["choices"][0]["message"]["content"]
     parsed = parse_llm_json(content)
-    results = parsed.get("results")
+    results = parsed.get("r", parsed.get("results"))
     if not isinstance(results, list):
         raise ValueError("LLM response did not contain results array.")
     return results
@@ -283,21 +264,6 @@ def request_llm_category_decisions(items: list[ProductCandidates]) -> list[dict]
 
 def elapsed_ms(started_at: float) -> float:
     return (perf_counter() - started_at) * 1000
-
-
-def _llm_candidate_payload(item: ProductCandidates, index: int) -> dict:
-    candidate = item.selection_candidates()[index]
-    payload = {
-        "index": index,
-        "fullPath": candidate.fullPath,
-    }
-    if item.similar_products:
-        product = item.similar_products[index]
-        payload["similarProductName"] = product.productName
-        payload["similarity"] = product.similarity
-    else:
-        payload["embeddingScore"] = candidate.score
-    return payload
 
 
 def chunks(items: list[ProductCandidates], size: int) -> list[list[ProductCandidates]]:
