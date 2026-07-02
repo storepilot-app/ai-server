@@ -1,4 +1,5 @@
 import unittest
+from threading import Barrier, Lock
 from unittest.mock import patch
 
 from app.category_matcher.llm import judge as service
@@ -74,6 +75,55 @@ class LlmCategorySelectionTest(unittest.TestCase):
         request.assert_called_once()
         self.assertEqual(selections[10].status, "SELECTED")
         self.assertEqual(selections[20].status, "REJECTED")
+
+    def test_runs_llm_chunks_concurrently_up_to_configured_limit(self) -> None:
+        items = [
+            service.ProductCandidates(
+                product=service.ProductItem(rowId=row_id, productName=f"product-{row_id}"),
+                candidates=[PredictionCandidate(categoryId=row_id, categoryCode=str(row_id), fullPath="A > B", score=0.7)],
+            )
+            for row_id in range(1, 5)
+        ]
+        barrier = Barrier(4)
+        lock = Lock()
+        active_requests = 0
+        maximum_active_requests = 0
+
+        def concurrent_response(chunk: list[service.ProductCandidates]) -> list[dict]:
+            nonlocal active_requests, maximum_active_requests
+            with lock:
+                active_requests += 1
+                maximum_active_requests = max(maximum_active_requests, active_requests)
+            try:
+                barrier.wait(timeout=2)
+                return [{
+                    "rowId": chunk[0].product.rowId,
+                    "matched": True,
+                    "selectedIndex": 0,
+                    "confidence": 0.9,
+                    "reason": "best",
+                }]
+            finally:
+                with lock:
+                    active_requests -= 1
+
+        with patch.object(service, "LLM_API_KEY", "test-key"), patch.object(
+            service,
+            "LLM_BATCH_SIZE",
+            1,
+        ), patch.object(
+            service,
+            "LLM_MAX_CONCURRENCY",
+            4,
+        ), patch.object(
+            service,
+            "request_llm_category_decisions",
+            side_effect=concurrent_response,
+        ):
+            selections = service.select_candidates_with_llm_batch(items)
+
+        self.assertEqual(4, maximum_active_requests)
+        self.assertEqual({1, 2, 3, 4}, set(selections))
 
     def test_selects_category_from_similar_product_candidates(self) -> None:
         item = service.ProductCandidates(

@@ -48,10 +48,12 @@ STOREPILOT_LLM_API_KEY=your-api-key
 STOREPILOT_LLM_MODEL=gpt-4o-mini
 STOREPILOT_LLM_BASE_URL=https://api.openai.com/v1
 STOREPILOT_LLM_TIMEOUT_SECONDS=90
-STOREPILOT_LLM_BATCH_SIZE=30
+STOREPILOT_LLM_BATCH_SIZE=15
+STOREPILOT_LLM_MAX_CONCURRENCY=20
 ```
 
 If `STOREPILOT_LLM_API_KEY` is empty, no automatic fallback category is selected. If there are no resolved similar products, the result is returned as `NO_SIMILAR_PRODUCTS` without an LLM call.
+Ambiguous products are split into batches of 15 and up to 20 OpenAI requests run concurrently. Reduce `STOREPILOT_LLM_MAX_CONCURRENCY` if the provider returns rate-limit errors.
 
 ## Embedding Model
 

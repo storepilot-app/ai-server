@@ -2,6 +2,7 @@ import json
 import logging
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from time import perf_counter
 
@@ -15,6 +16,7 @@ from app.category_matcher.config.settings import (
     LLM_API_KEY,
     LLM_BASE_URL,
     LLM_BATCH_SIZE,
+    LLM_MAX_CONCURRENCY,
     LLM_MODEL,
     LLM_THRESHOLD,
     LLM_TIMEOUT_SECONDS,
@@ -65,24 +67,39 @@ def select_candidates_with_llm_batch(items: list[ProductCandidates]) -> dict[int
 
     batch_started_at = perf_counter()
     item_chunks = list(chunks(items, max(1, LLM_BATCH_SIZE)))
-    for chunk_index, chunk in enumerate(item_chunks, start=1):
-        chunk_started_at = perf_counter()
-        chunk_selections = select_candidates_chunk_with_llm(chunk)
-        selections.update(chunk_selections)
-        logger.info(
-            "llm_category_chunk_timing chunk=%d/%d items=%d selected=%d rejected=%d failed=%d elapsed_ms=%.1f",
-            chunk_index,
-            len(item_chunks),
-            len(chunk),
-            sum(selection.status == "SELECTED" for selection in chunk_selections.values()),
-            sum(selection.status == "REJECTED" for selection in chunk_selections.values()),
-            sum(selection.status == "FAILED" for selection in chunk_selections.values()),
-            elapsed_ms(chunk_started_at),
-        )
+    worker_count = min(len(item_chunks), max(1, LLM_MAX_CONCURRENCY))
+    with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="category-llm") as executor:
+        futures = {
+            executor.submit(select_candidates_chunk_with_llm, chunk): (chunk_index, chunk)
+            for chunk_index, chunk in enumerate(item_chunks, start=1)
+        }
+        for future in as_completed(futures):
+            chunk_index, chunk = futures[future]
+            chunk_started_at = perf_counter()
+            try:
+                chunk_selections = future.result()
+            except Exception as error:
+                detail = summarize_llm_error(error)
+                logger.exception("Unexpected concurrent LLM chunk failure: %s", detail)
+                chunk_selections = {
+                    item.product.rowId: fallback_llm_selection(item.candidates, "FAILED", detail)
+                    for item in chunk
+                }
+            selections.update(chunk_selections)
+            logger.info(
+                "llm_category_chunk_result chunk=%d/%d items=%d selected=%d rejected=%d failed=%d",
+                chunk_index,
+                len(item_chunks),
+                len(chunk),
+                sum(selection.status == "SELECTED" for selection in chunk_selections.values()),
+                sum(selection.status == "REJECTED" for selection in chunk_selections.values()),
+                sum(selection.status == "FAILED" for selection in chunk_selections.values()),
+            )
     logger.info(
-        "llm_category_batch_timing items=%d chunks=%d elapsed_ms=%.1f",
+        "llm_category_batch_timing items=%d chunks=%d concurrency=%d elapsed_ms=%.1f",
         len(items),
         len(item_chunks),
+        worker_count,
         elapsed_ms(batch_started_at),
     )
     return selections
