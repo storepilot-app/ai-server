@@ -23,6 +23,7 @@ from app.category_matcher.config.settings import (
 
 
 logger = logging.getLogger("uvicorn.error").getChild("storepilot.category_matcher.llm")
+CATEGORY_OPTION_LIMIT = 5
 
 
 @dataclass(frozen=True)
@@ -41,17 +42,32 @@ class ProductCandidates:
     category_distribution: list[CategoryDistributionItem] = field(default_factory=list)
 
     def selection_candidates(self) -> list[PredictionCandidate]:
+        if self.category_distribution:
+            return [
+                PredictionCandidate(
+                    categoryId=category.categoryId,
+                    categoryCode=category.categoryCode,
+                    fullPath=category.fullPath,
+                    score=category.maxSimilarity,
+                )
+                for category in self.category_distribution[:CATEGORY_OPTION_LIMIT]
+            ]
         if not self.similar_products:
-            return self.candidates
-        return [
-            PredictionCandidate(
-                categoryId=product.categoryId,
-                categoryCode=product.categoryCode,
-                fullPath=product.fullPath,
-                score=product.similarity,
+            return self.candidates[:CATEGORY_OPTION_LIMIT]
+
+        unique_categories: dict[tuple[int | None, str], PredictionCandidate] = {}
+        for product in self.similar_products:
+            key = (product.categoryId, product.fullPath)
+            unique_categories.setdefault(
+                key,
+                PredictionCandidate(
+                    categoryId=product.categoryId,
+                    categoryCode=product.categoryCode,
+                    fullPath=product.fullPath,
+                    score=product.similarity,
+                ),
             )
-            for product in self.similar_products
-        ]
+        return list(unique_categories.values())[:CATEGORY_OPTION_LIMIT]
 
 
 def select_candidate_with_llm(product_name: str, candidates: list[PredictionCandidate]) -> LlmSelection:
@@ -196,7 +212,7 @@ def request_llm_category_decisions(items: list[ProductCandidates]) -> list[dict]
                 "role": "system",
                 "content": (
                     "Choose one Naver category option per product. "
-                    "o=[index,similar product,category,similarity]. "
+                    "o=[index,category,similarity]. "
                     "Select only when the exact product type and primary purpose clearly match. "
                     "Reject accessories versus main products, related but different products, broad categories, and uncertain matches. "
                     "Brand, model, style, size, or similarity alone is insufficient. "
@@ -216,11 +232,10 @@ def request_llm_category_decisions(items: list[ProductCandidates]) -> list[dict]
                                 "o": [
                                     [
                                         index,
-                                        product.productName,
-                                        product.fullPath,
-                                        round(product.similarity, 4),
+                                        candidate.fullPath,
+                                        round(candidate.score, 4),
                                     ]
-                                    for index, product in enumerate(item.similar_products)
+                                    for index, candidate in enumerate(item.selection_candidates())
                                 ],
                             }
                             for item in items

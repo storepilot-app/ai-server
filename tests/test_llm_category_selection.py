@@ -109,8 +109,32 @@ class LlmCategorySelectionTest(unittest.TestCase):
         self.assertNotIn("similarProducts", request.data.decode("utf-8"))
         self.assertNotIn("candidates", request.data.decode("utf-8"))
         self.assertNotIn("categoryDistribution", request.data.decode("utf-8"))
-        self.assertEqual([[0, "similar product", "A > B", 0.9123]], compact_item["o"])
+        self.assertNotIn("similar product", request.data.decode("utf-8"))
+        self.assertEqual([[0, "A > B", 0.9123]], compact_item["o"])
         self.assertEqual([{"rowId": 7, "matched": True, "selectedIndex": 0}], decisions)
+
+    def test_uses_top_five_unique_category_options(self) -> None:
+        distributions = [
+            CategoryDistributionItem(
+                categoryId=index,
+                categoryCode=str(index),
+                fullPath=f"Category > {index}",
+                support=1.0 / 6,
+                exampleCount=1,
+                maxSimilarity=0.9 - index * 0.01,
+            )
+            for index in range(6)
+        ]
+        item = service.ProductCandidates(
+            product=service.ProductItem(rowId=1, productName="product"),
+            candidates=[],
+            category_distribution=distributions,
+        )
+
+        options = item.selection_candidates()
+
+        self.assertEqual(5, len(options))
+        self.assertEqual([f"Category > {index}" for index in range(5)], [option.fullPath for option in options])
 
     def test_batches_multiple_products_in_one_llm_request(self) -> None:
         items = [
