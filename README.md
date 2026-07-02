@@ -121,7 +121,6 @@ STOREPILOT_AUTO_ACCEPT_MIN_EXAMPLES=3
 STOREPILOT_PRODUCT_DUPLICATE_THRESHOLD=0.985
 STOREPILOT_PRODUCT_SEARCH_K=20
 STOREPILOT_PRODUCT_REPRESENTATIVE_K=5
-STOREPILOT_PRODUCT_MAX_PER_CATEGORY=2
 ```
 
 `flat` is the default exact index and is appropriate for the current data size. Rebuild with HNSW when the collection grows to several hundred thousand products:

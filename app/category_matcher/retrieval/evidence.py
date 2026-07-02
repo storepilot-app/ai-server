@@ -6,7 +6,6 @@ from dataclasses import dataclass
 
 from app.category_matcher.config.settings import (
     PRODUCT_DISTRIBUTION_TEMPERATURE,
-    PRODUCT_MAX_PER_CATEGORY,
     PRODUCT_REPRESENTATIVE_K,
 )
 from app.category_matcher.product_memory.store import NaverCategoryLabel, ProductSearchHit
@@ -32,7 +31,7 @@ def build_product_evidence(
             resolved.append((hit, hit.categories[0]))
 
     distribution = _calculate_distribution(resolved)
-    representatives = _select_representatives(resolved)
+    representatives = _select_representatives(resolved, distribution)
     return ProductEvidence(similar_products=representatives, distribution=distribution)
 
 
@@ -75,13 +74,20 @@ def _calculate_distribution(
 
 def _select_representatives(
     resolved: list[tuple[ProductSearchHit, NaverCategoryLabel]],
+    distribution: list[CategoryDistributionItem],
 ) -> list[SimilarProductItem]:
-    category_counts: dict[int, int] = defaultdict(int)
-    selected: list[SimilarProductItem] = []
-
+    best_product_by_category: dict[int, tuple[ProductSearchHit, NaverCategoryLabel]] = {}
     for hit, mapping in resolved:
-        if category_counts[mapping.category_id] >= PRODUCT_MAX_PER_CATEGORY:
+        current = best_product_by_category.get(mapping.category_id)
+        if current is None or hit.similarity > current[0].similarity:
+            best_product_by_category[mapping.category_id] = (hit, mapping)
+
+    selected: list[SimilarProductItem] = []
+    for category in distribution[:PRODUCT_REPRESENTATIVE_K]:
+        representative = best_product_by_category.get(category.categoryId)
+        if representative is None:
             continue
+        hit, mapping = representative
         selected.append(
             SimilarProductItem(
                 productName=hit.product_name,
@@ -91,7 +97,4 @@ def _select_representatives(
                 similarity=hit.similarity,
             )
         )
-        category_counts[mapping.category_id] += 1
-        if len(selected) >= PRODUCT_REPRESENTATIVE_K:
-            break
     return selected

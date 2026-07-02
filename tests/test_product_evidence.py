@@ -15,7 +15,7 @@ class ProductEvidenceTest(unittest.TestCase):
         self.category_a = NaverCategoryLabel(1, "NAVER-A", "생활 > 문구 > 계산기")
         self.category_b = NaverCategoryLabel(2, "NAVER-B", "생활 > 완구 > 보드게임")
 
-    def test_distribution_uses_all_hits_but_top5_is_category_diverse(self):
+    def test_distribution_uses_all_hits_and_top5_has_one_product_per_category(self):
         hits = [
             ProductSearchHit(f"계산기 {index}", (self.category_a,), 0.99 - index * 0.001)
             for index in range(5)
@@ -23,10 +23,14 @@ class ProductEvidenceTest(unittest.TestCase):
 
         evidence = build_product_evidence(hits)
 
-        self.assertEqual(3, len(evidence.similar_products))
-        self.assertEqual(2, sum(item.categoryId == 1 for item in evidence.similar_products))
+        self.assertEqual(2, len(evidence.similar_products))
+        self.assertEqual(1, sum(item.categoryId == 1 for item in evidence.similar_products))
         self.assertEqual(2, len(evidence.distribution))
         self.assertEqual(5, evidence.distribution[0].exampleCount)
+        self.assertEqual(
+            [category.categoryId for category in evidence.distribution[:5]],
+            [product.categoryId for product in evidence.similar_products],
+        )
 
     def test_conflicting_title_is_excluded_from_category_evidence(self):
         hits = [ProductSearchHit("충돌 상품", (self.category_a, self.category_b), 0.99)]
