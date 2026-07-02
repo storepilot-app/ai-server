@@ -102,15 +102,15 @@ class LlmCategorySelectionTest(unittest.TestCase):
         payload = json.loads(request.data.decode("utf-8"))
         system_prompt = payload["messages"][0]["content"]
         user_payload = json.loads(payload["messages"][1]["content"])
-        compact_item = user_payload["x"][0]
+        compact_item = user_payload["products"][0]
         self.assertIn("exact product type and primary purpose", system_prompt)
         self.assertIn("matched=false", system_prompt)
-        self.assertEqual({"id", "n", "o"}, set(compact_item))
+        self.assertEqual({"rowId", "productName", "categoryOptions"}, set(compact_item))
         self.assertNotIn("similarProducts", request.data.decode("utf-8"))
         self.assertNotIn("candidates", request.data.decode("utf-8"))
         self.assertNotIn("categoryDistribution", request.data.decode("utf-8"))
         self.assertNotIn("similar product", request.data.decode("utf-8"))
-        self.assertEqual([[0, "A > B", 0.9123]], compact_item["o"])
+        self.assertEqual([[0, "A > B", 0.9123]], compact_item["categoryOptions"])
         self.assertEqual([{"rowId": 7, "matched": True, "selectedIndex": 0}], decisions)
 
     def test_uses_top_five_unique_category_options(self) -> None:

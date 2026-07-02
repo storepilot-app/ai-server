@@ -212,7 +212,7 @@ def request_llm_category_decisions(items: list[ProductCandidates]) -> list[dict]
                 "role": "system",
                 "content": (
                     "Choose one Naver category option per product. "
-                    "o=[index,category,similarity]. "
+                    "categoryOptions=[index,category,similarity]. "
                     "Select only when the exact product type and primary purpose clearly match. "
                     "Reject accessories versus main products, related but different products, broad categories, and uncertain matches. "
                     "Brand, model, style, size, or similarity alone is insufficient. "
@@ -225,11 +225,11 @@ def request_llm_category_decisions(items: list[ProductCandidates]) -> list[dict]
                 "role": "user",
                 "content": json.dumps(
                     {
-                        "x": [
+                        "products": [
                             {
-                                "id": item.product.rowId,
-                                "n": item.product.productName,
-                                "o": [
+                                "rowId": item.product.rowId,
+                                "productName": item.product.productName,
+                                "categoryOptions": [
                                     [
                                         index,
                                         candidate.fullPath,
