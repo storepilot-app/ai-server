@@ -116,7 +116,7 @@ class LlmCategorySelectionTest(unittest.TestCase):
         self.assertEqual([[0, "A > B", 0.9123]], compact_item["categoryOptions"])
         self.assertEqual([{"rowId": 7, "matched": True, "selectedIndex": 0}], decisions)
 
-    def test_uses_top_seven_unique_category_options(self) -> None:
+    def test_uses_top_five_unique_category_options(self) -> None:
         distributions = [
             CategoryDistributionItem(
                 categoryId=index,
@@ -136,8 +136,8 @@ class LlmCategorySelectionTest(unittest.TestCase):
 
         options = item.selection_candidates()
 
-        self.assertEqual(7, len(options))
-        self.assertEqual([f"Category > {index}" for index in range(7)], [option.fullPath for option in options])
+        self.assertEqual(5, len(options))
+        self.assertEqual([f"Category > {index}" for index in range(5)], [option.fullPath for option in options])
 
     def test_batches_multiple_products_in_one_llm_request(self) -> None:
         items = [
