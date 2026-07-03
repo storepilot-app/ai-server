@@ -5,6 +5,7 @@ from app.category_matcher.config.settings import CATEGORY_EMBEDDING_CANDIDATE_K,
 from app.category_matcher.decision.policy import auto_accepted_category
 from app.category_matcher.embedding.store import (
     embed,
+    load_category_metadata,
     rebuild_category_cache,
     search_category_candidates_by_vectors,
 )
@@ -23,6 +24,7 @@ from app.category_matcher.preprocess.query import (
 )
 from app.category_matcher.product_memory.store import ProductSearchHit, search_similar_products_by_vectors
 from app.category_matcher.retrieval.evidence import build_product_evidence
+from app.category_matcher.rules.category_alias import load_category_aliases, resolve_category_alias
 from app.category_matcher.schemas import (
     CategoryDistributionItem,
     PredictionCandidate,
@@ -56,6 +58,19 @@ def predict_categories(
     category_search_started_at = perf_counter()
     category_candidate_rows = search_category_candidates_by_vectors(version_id, query_embeddings)
     category_search_ms = elapsed_ms(category_search_started_at)
+    category_metadata = load_category_metadata(version_id)
+    category_aliases = load_category_aliases()
+    alias_candidates = {
+        product.rowId: candidate
+        for product in products
+        if (
+            candidate := resolve_category_alias(
+                product.productName,
+                category_metadata,
+                category_aliases,
+            )
+        ) is not None
+    }
 
     evidence_started_at = perf_counter()
     resolved_items = [
@@ -75,6 +90,11 @@ def predict_categories(
     auto_selected_count = 0
 
     for item in resolved_items:
+        alias_candidate = alias_candidates.get(item.product.rowId)
+        if alias_candidate is not None:
+            completed_results[item.product.rowId] = prediction_from_alias(item, alias_candidate)
+            auto_selected_count += 1
+            continue
         if not item.similar_products:
             if item.candidates:
                 ambiguous_items.append(item)
@@ -150,6 +170,29 @@ def prediction_without_similar_products(item: ProductCandidates) -> PredictionIt
         decisionSource="NO_SIMILAR_PRODUCTS",
         similarProducts=[],
         categoryDistribution=[],
+    )
+
+
+def prediction_from_alias(item: ProductCandidates, selected: PredictionCandidate) -> PredictionItem:
+    remaining_candidates = [
+        candidate
+        for candidate in item.candidates
+        if candidate.categoryCode != selected.categoryCode
+    ]
+    return PredictionItem(
+        rowId=item.product.rowId,
+        categoryId=selected.categoryId,
+        categoryCode=selected.categoryCode,
+        fullPath=selected.fullPath,
+        score=selected.score,
+        candidates=[selected, *remaining_candidates][:CATEGORY_EMBEDDING_CANDIDATE_K],
+        llmUsed=False,
+        llmSelectedCategory=None,
+        llmStatus="AUTO_SELECTED",
+        llmStatusDetail="Configured category alias rule matched.",
+        decisionSource="CATEGORY_ALIAS",
+        similarProducts=item.similar_products,
+        categoryDistribution=item.category_distribution,
     )
 
 

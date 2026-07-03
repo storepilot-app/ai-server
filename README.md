@@ -94,6 +94,20 @@ POST /ai/categories/predict
 
 Returns an automatically accepted or LLM-selected category from historical-product and direct-category retrieval. Products without usable historical matches can still use category-embedding candidates.
 
+## Category Alias Rules
+
+Deterministic keyword-to-category mappings are managed in
+`app/category_matcher/rules/category_aliases.csv`.
+
+```csv
+keyword,category_code,category_path
+말랑이,50004246,출산/육아 > 완구/인형 > 미술놀이 > 클레이
+```
+
+Add one row per rule. `category_code` is used to resolve the current category cache;
+`category_path` is documentation for people editing the file. Rules are reloaded for
+each prediction request, and a longer keyword wins when multiple rules match.
+
 ## Historical Product Index
 
 Historical product workbooks use column `D` for the product name and column `T` for the source user's my-category code. During rebuild, each my-category code is resolved to a Naver category ID, code, and full path. Only the resolved Naver category label is stored in the shared FAISS metadata.

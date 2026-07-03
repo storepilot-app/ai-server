@@ -82,6 +82,13 @@ def load_category_cache(version_id: int) -> tuple[np.ndarray, list[dict]]:
     return embeddings, categories
 
 
+def load_category_metadata(version_id: int) -> list[dict]:
+    meta_path = category_cache_dir(version_id) / "category_meta.json"
+    if not meta_path.exists():
+        return []
+    return json.loads(meta_path.read_text(encoding="utf-8"))
+
+
 def search_category_candidates_by_vectors(
     version_id: int,
     query_vectors: np.ndarray,

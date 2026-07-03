@@ -110,6 +110,33 @@ class ProductEvidenceTest(unittest.TestCase):
         self.assertIsNone(result[0].categoryId)
         llm.assert_called_once_with([])
 
+    def test_mallangi_alias_auto_selects_clay_without_llm(self):
+        categories = [{
+            "categoryId": 2750,
+            "categoryCode": "50004246",
+            "fullPath": "출산/육아 > 완구/인형 > 미술놀이 > 클레이",
+        }]
+        with patch.object(
+            service, "embed", return_value=np.asarray([[1.0, 0.0]], dtype=np.float32)
+        ), patch.object(
+            service, "search_similar_products_by_vectors", return_value=[[]]
+        ), patch.object(
+            service, "search_category_candidates_by_vectors", return_value=[[]]
+        ), patch.object(
+            service, "load_category_metadata", return_value=categories
+        ), patch.object(
+            service, "select_candidates_with_llm_batch", return_value={}
+        ) as llm:
+            result = service.predict_categories(
+                1,
+                [ProductItem(rowId=1, productName="촉감놀이 말랑이 세트")],
+            )
+
+        self.assertEqual("CATEGORY_ALIAS", result[0].decisionSource)
+        self.assertEqual("AUTO_SELECTED", result[0].llmStatus)
+        self.assertEqual("50004246", result[0].categoryCode)
+        llm.assert_called_once_with([])
+
 
 if __name__ == "__main__":
     unittest.main()
