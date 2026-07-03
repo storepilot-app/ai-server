@@ -104,9 +104,11 @@ class LlmCategorySelectionTest(unittest.TestCase):
         user_payload = json.loads(payload["messages"][1]["content"])
         compact_item = user_payload["products"][0]
         self.assertIn("product name provides enough evidence", system_prompt)
+        self.assertIn("retrieval metadata, never as proof", system_prompt)
         self.assertIn("Prefer a broader/general category", system_prompt)
         self.assertIn("assumptions not supported by the product name", system_prompt)
         self.assertIn("distinguish accessories from main products", system_prompt)
+        self.assertIn("reject rather than guess", system_prompt)
         self.assertIn("matched=false", system_prompt)
         self.assertEqual({"rowId", "productName", "categoryOptions"}, set(compact_item))
         self.assertNotIn("similarProducts", request.data.decode("utf-8"))
