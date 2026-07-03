@@ -39,7 +39,7 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 ## LLM Category Judge
 
-When product evidence does not meet the automatic acceptance policy, the AI server sends the category-diverse similar-product Top 5 to an OpenAI-compatible chat completions API. The LLM selects one of those product categories or rejects all candidates.
+When product evidence does not meet the automatic acceptance policy, the AI server sends up to seven unique category options to an OpenAI-compatible chat completions API. The LLM selects one category or rejects all candidates.
 
 Set these environment variables before running the server:
 
@@ -110,7 +110,7 @@ uv run python -m scripts.rebuild_product_index `
 
 The same rebuild is available through `POST /ai/categories/product-index/rebuild`. Spring Boot exposes the proxy API as `POST /api/v1/admin/training-products/rebuild`; its `userKey` is used only to resolve the source my-category codes while rebuilding. The resulting index is stored at `ai-cache/products/<model>/shared` and all users search the same index.
 
-Prediction searches the historical index for 20 products, collapses near duplicates, computes the category distribution from the complete set, and sends a category-diverse Top 5 to the LLM. A high-confidence consensus bypasses the LLM.
+Prediction searches the historical index for 20 products, collapses near duplicates, computes the category distribution from the complete set, and sends up to seven unique categories to the LLM. A high-confidence consensus bypasses the LLM.
 
 ```env
 STOREPILOT_AUTO_ACCEPT_THRESHOLD=0.90
@@ -120,7 +120,7 @@ STOREPILOT_CATEGORY_MARGIN_THRESHOLD=0.15
 STOREPILOT_AUTO_ACCEPT_MIN_EXAMPLES=3
 STOREPILOT_PRODUCT_DUPLICATE_THRESHOLD=0.985
 STOREPILOT_PRODUCT_SEARCH_K=20
-STOREPILOT_PRODUCT_REPRESENTATIVE_K=5
+STOREPILOT_PRODUCT_REPRESENTATIVE_K=7
 ```
 
 `flat` is the default exact index and is appropriate for the current data size. Rebuild with HNSW when the collection grows to several hundred thousand products:

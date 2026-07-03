@@ -19,11 +19,11 @@ from app.category_matcher.config.settings import (
     LLM_MAX_CONCURRENCY,
     LLM_MODEL,
     LLM_TIMEOUT_SECONDS,
+    PRODUCT_REPRESENTATIVE_K,
 )
 
 
 logger = logging.getLogger("uvicorn.error").getChild("storepilot.category_matcher.llm")
-CATEGORY_OPTION_LIMIT = 5
 
 
 @dataclass(frozen=True)
@@ -50,10 +50,10 @@ class ProductCandidates:
                     fullPath=category.fullPath,
                     score=category.maxSimilarity,
                 )
-                for category in self.category_distribution[:CATEGORY_OPTION_LIMIT]
+                for category in self.category_distribution[:PRODUCT_REPRESENTATIVE_K]
             ]
         if not self.similar_products:
-            return self.candidates[:CATEGORY_OPTION_LIMIT]
+            return self.candidates[:PRODUCT_REPRESENTATIVE_K]
 
         unique_categories: dict[tuple[int | None, str], PredictionCandidate] = {}
         for product in self.similar_products:
@@ -67,7 +67,7 @@ class ProductCandidates:
                     score=product.similarity,
                 ),
             )
-        return list(unique_categories.values())[:CATEGORY_OPTION_LIMIT]
+        return list(unique_categories.values())[:PRODUCT_REPRESENTATIVE_K]
 
 
 def select_candidate_with_llm(product_name: str, candidates: list[PredictionCandidate]) -> LlmSelection:

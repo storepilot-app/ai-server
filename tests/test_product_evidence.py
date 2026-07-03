@@ -15,7 +15,7 @@ class ProductEvidenceTest(unittest.TestCase):
         self.category_a = NaverCategoryLabel(1, "NAVER-A", "생활 > 문구 > 계산기")
         self.category_b = NaverCategoryLabel(2, "NAVER-B", "생활 > 완구 > 보드게임")
 
-    def test_distribution_uses_all_hits_and_top5_has_one_product_per_category(self):
+    def test_distribution_uses_all_hits_and_options_have_one_product_per_category(self):
         hits = [
             ProductSearchHit(f"계산기 {index}", (self.category_a,), 0.99 - index * 0.001)
             for index in range(5)
