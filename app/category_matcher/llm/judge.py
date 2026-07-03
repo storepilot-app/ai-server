@@ -41,33 +41,45 @@ class ProductCandidates:
     similar_products: list[SimilarProductItem] = field(default_factory=list)
     category_distribution: list[CategoryDistributionItem] = field(default_factory=list)
 
-    def selection_candidates(self) -> list[PredictionCandidate]:
-        if self.category_distribution:
-            return [
-                PredictionCandidate(
-                    categoryId=category.categoryId,
-                    categoryCode=category.categoryCode,
-                    fullPath=category.fullPath,
-                    score=category.maxSimilarity,
-                )
-                for category in self.category_distribution[:PRODUCT_REPRESENTATIVE_K]
-            ]
-        if not self.similar_products:
-            return self.candidates[:PRODUCT_REPRESENTATIVE_K]
+    def category_options(self) -> list[tuple[PredictionCandidate, str]]:
+        options: list[tuple[PredictionCandidate, str]] = []
+        seen_categories: set[tuple[int | None, str]] = set()
 
-        unique_categories: dict[tuple[int | None, str], PredictionCandidate] = {}
-        for product in self.similar_products:
-            key = (product.categoryId, product.fullPath)
-            unique_categories.setdefault(
-                key,
+        product_candidates = [
+            PredictionCandidate(
+                categoryId=category.categoryId,
+                categoryCode=category.categoryCode,
+                fullPath=category.fullPath,
+                score=category.maxSimilarity,
+            )
+            for category in self.category_distribution[:PRODUCT_REPRESENTATIVE_K]
+        ]
+        if not product_candidates and self.similar_products:
+            product_candidates = [
                 PredictionCandidate(
                     categoryId=product.categoryId,
                     categoryCode=product.categoryCode,
                     fullPath=product.fullPath,
                     score=product.similarity,
-                ),
-            )
-        return list(unique_categories.values())[:PRODUCT_REPRESENTATIVE_K]
+                )
+                for product in self.similar_products
+            ]
+
+        for candidate in product_candidates:
+            key = (candidate.categoryId, candidate.fullPath)
+            if key not in seen_categories:
+                seen_categories.add(key)
+                options.append((candidate, "SIMILAR_PRODUCT"))
+
+        for candidate in self.candidates:
+            key = (candidate.categoryId, candidate.fullPath)
+            if key not in seen_categories:
+                seen_categories.add(key)
+                options.append((candidate, "CATEGORY_EMBEDDING"))
+        return options
+
+    def selection_candidates(self) -> list[PredictionCandidate]:
+        return [candidate for candidate, _ in self.category_options()]
 
 
 def select_candidate_with_llm(product_name: str, candidates: list[PredictionCandidate]) -> LlmSelection:
@@ -97,7 +109,7 @@ def select_candidates_with_llm_batch(items: list[ProductCandidates]) -> dict[int
                 detail = summarize_llm_error(error)
                 logger.exception("Unexpected concurrent LLM chunk failure: %s", detail)
                 chunk_selections = {
-                    item.product.rowId: fallback_llm_selection(item.candidates, "FAILED", detail)
+                    item.product.rowId: fallback_llm_selection(item.selection_candidates(), "FAILED", detail)
                     for item in chunk
                 }
             selections.update(chunk_selections)
@@ -123,7 +135,9 @@ def select_candidates_with_llm_batch(items: list[ProductCandidates]) -> dict[int
 def select_candidates_chunk_with_llm(items: list[ProductCandidates]) -> dict[int, LlmSelection]:
     if not LLM_API_KEY:
         return {
-            item.product.rowId: fallback_llm_selection(item.candidates, "SKIPPED", "LLM API key is not set.")
+            item.product.rowId: fallback_llm_selection(
+                item.selection_candidates(), "SKIPPED", "LLM API key is not set."
+            )
             for item in items
         }
 
@@ -133,7 +147,7 @@ def select_candidates_chunk_with_llm(items: list[ProductCandidates]) -> dict[int
         detail = summarize_llm_error(error)
         logger.warning("LLM category judge batch failed: %s", detail)
         return {
-            item.product.rowId: fallback_llm_selection(item.candidates, "FAILED", detail)
+            item.product.rowId: fallback_llm_selection(item.selection_candidates(), "FAILED", detail)
             for item in items
         }
 
@@ -212,7 +226,7 @@ def request_llm_category_decisions(items: list[ProductCandidates]) -> list[dict]
                 "role": "system",
                 "content": (
                     "Choose one Naver category option per product. "
-                    "categoryOptions=[index,category,similarity]. "
+                    "categoryOptions=[index,category,score,source]. "
                     "Select an option only when the product name provides enough evidence that the option "
                     "matches the product's primary shopping category. "
                     "Do not choose a more specific category based only on weak clues, brand/character names, "
@@ -239,8 +253,9 @@ def request_llm_category_decisions(items: list[ProductCandidates]) -> list[dict]
                                         index,
                                         candidate.fullPath,
                                         round(candidate.score, 4),
+                                        source,
                                     ]
-                                    for index, candidate in enumerate(item.selection_candidates())
+                                    for index, (candidate, source) in enumerate(item.category_options())
                                 ],
                             }
                             for item in items

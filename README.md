@@ -39,7 +39,7 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 ## LLM Category Judge
 
-When product evidence does not meet the automatic acceptance policy, the AI server sends up to five unique category options to an OpenAI-compatible chat completions API. The LLM selects one category or rejects all candidates.
+When product evidence does not meet the automatic acceptance policy, the AI server sends a hybrid set of up to five historical-product categories and five non-duplicate category-embedding candidates to an OpenAI-compatible chat completions API. The LLM selects one category or rejects all candidates.
 
 Set these environment variables before running the server:
 
@@ -86,13 +86,13 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 POST /ai/categories/rebuild
 ```
 
-Builds legacy Naver category embeddings. Product prediction no longer uses this cache.
+Builds the Naver category embedding cache used by hybrid product prediction.
 
 ```http
 POST /ai/categories/predict
 ```
 
-Returns an automatically accepted or LLM-selected category from the historical product index. Products without usable similar products return no match.
+Returns an automatically accepted or LLM-selected category from historical-product and direct-category retrieval. Products without usable historical matches can still use category-embedding candidates.
 
 ## Historical Product Index
 
@@ -110,7 +110,7 @@ uv run python -m scripts.rebuild_product_index `
 
 The same rebuild is available through `POST /ai/categories/product-index/rebuild`. Spring Boot exposes the proxy API as `POST /api/v1/admin/training-products/rebuild`; its `userKey` is used only to resolve the source my-category codes while rebuilding. The resulting index is stored at `ai-cache/products/<model>/shared` and all users search the same index.
 
-Prediction searches the historical index for 20 products, collapses near duplicates, computes the category distribution from the complete set, and sends up to five unique categories to the LLM. A high-confidence consensus bypasses the LLM.
+Prediction searches the historical index for 20 products, collapses near duplicates, and computes the category distribution from the complete set. It also searches the Naver category embedding cache, removes categories already present in the historical-product Top 5, and adds up to five direct-category candidates. A high-confidence historical-product consensus bypasses the LLM.
 
 ```env
 STOREPILOT_AUTO_ACCEPT_THRESHOLD=0.90
@@ -121,6 +121,8 @@ STOREPILOT_AUTO_ACCEPT_MIN_EXAMPLES=3
 STOREPILOT_PRODUCT_DUPLICATE_THRESHOLD=0.985
 STOREPILOT_PRODUCT_SEARCH_K=20
 STOREPILOT_PRODUCT_REPRESENTATIVE_K=5
+STOREPILOT_CATEGORY_EMBEDDING_SEARCH_K=15
+STOREPILOT_CATEGORY_EMBEDDING_CANDIDATE_K=5
 ```
 
 `flat` is the default exact index and is appropriate for the current data size. Rebuild with HNSW when the collection grows to several hundred thousand products:

@@ -1,10 +1,12 @@
 import logging
 from time import perf_counter
 
+from app.category_matcher.config.settings import CATEGORY_EMBEDDING_CANDIDATE_K, PRODUCT_REPRESENTATIVE_K
 from app.category_matcher.decision.policy import auto_accepted_category
 from app.category_matcher.embedding.store import (
     embed,
     rebuild_category_cache,
+    search_category_candidates_by_vectors,
 )
 from app.category_matcher.llm.judge import (
     LlmSelection,
@@ -51,10 +53,18 @@ def predict_categories(
     product_hit_rows = search_similar_products_by_vectors(query_embeddings)
     search_ms = elapsed_ms(search_started_at)
 
+    category_search_started_at = perf_counter()
+    category_candidate_rows = search_category_candidates_by_vectors(version_id, query_embeddings)
+    category_search_ms = elapsed_ms(category_search_started_at)
+
     evidence_started_at = perf_counter()
     resolved_items = [
-        attach_product_evidence(item, hits)
-        for item, hits in zip(product_candidates, product_hit_rows)
+        attach_product_evidence(item, hits, category_candidates)
+        for item, hits, category_candidates in zip(
+            product_candidates,
+            product_hit_rows,
+            category_candidate_rows,
+        )
     ]
     evidence_ms = elapsed_ms(evidence_started_at)
 
@@ -66,8 +76,11 @@ def predict_categories(
 
     for item in resolved_items:
         if not item.similar_products:
-            completed_results[item.product.rowId] = prediction_without_similar_products(item)
-            no_similar_product_count += 1
+            if item.candidates:
+                ambiguous_items.append(item)
+            else:
+                completed_results[item.product.rowId] = prediction_without_similar_products(item)
+                no_similar_product_count += 1
             continue
         accepted = auto_accepted_category(item.category_distribution)
         if accepted is None:
@@ -88,7 +101,9 @@ def predict_categories(
             item,
             llm_selections.get(
                 item.product.rowId,
-                fallback_llm_selection(item.candidates, "FAILED", "LLM batch response missing this rowId."),
+                fallback_llm_selection(
+                    item.selection_candidates(), "FAILED", "LLM batch response missing this rowId."
+                ),
             ),
         )
         for item in resolved_items
@@ -96,7 +111,7 @@ def predict_categories(
     response_ms = elapsed_ms(response_started_at)
     logger.info(
         "category_predict_timing version_id=%s products=%d no_similar=%d auto_selected=%d "
-        "llm_items=%d preprocess_ms=%.1f embedding_ms=%.1f faiss_ms=%.1f evidence_ms=%.1f "
+        "llm_items=%d preprocess_ms=%.1f embedding_ms=%.1f faiss_ms=%.1f category_search_ms=%.1f evidence_ms=%.1f "
         "decision_ms=%.1f llm_ms=%.1f response_ms=%.1f total_ms=%.1f",
         version_id,
         len(products),
@@ -106,6 +121,7 @@ def predict_categories(
         preprocess_ms,
         embedding_ms,
         search_ms,
+        category_search_ms,
         evidence_ms,
         decision_ms,
         llm_ms,
@@ -140,11 +156,25 @@ def prediction_without_similar_products(item: ProductCandidates) -> PredictionIt
 def attach_product_evidence(
     item: ProductCandidates,
     hits: list[ProductSearchHit],
+    category_candidates: list[PredictionCandidate],
 ) -> ProductCandidates:
     evidence = build_product_evidence(hits)
+    product_category_keys = {
+        (category.categoryId, category.fullPath)
+        for category in evidence.distribution[:PRODUCT_REPRESENTATIVE_K]
+    }
+    unique_category_candidates: list[PredictionCandidate] = []
+    for candidate in category_candidates:
+        key = (candidate.categoryId, candidate.fullPath)
+        if key in product_category_keys:
+            continue
+        product_category_keys.add(key)
+        unique_category_candidates.append(candidate)
+        if len(unique_category_candidates) >= CATEGORY_EMBEDDING_CANDIDATE_K:
+            break
     return ProductCandidates(
         product=item.product,
-        candidates=item.candidates,
+        candidates=unique_category_candidates,
         similar_products=evidence.similar_products,
         category_distribution=evidence.distribution,
     )

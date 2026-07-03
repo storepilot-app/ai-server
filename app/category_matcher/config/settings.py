@@ -9,6 +9,8 @@ EMBEDDING_BATCH_SIZE = int(os.getenv("STOREPILOT_EMBEDDING_BATCH_SIZE", "32"))
 EMBEDDING_USE_FP16 = os.getenv("STOREPILOT_EMBEDDING_USE_FP16", "true").strip().lower() in {"1", "true", "yes"}
 CACHE_ROOT = Path(os.getenv("STOREPILOT_AI_CACHE_ROOT", "ai-cache/categories"))
 MODEL_CACHE_KEY = re.sub(r"[^A-Za-z0-9_.-]+", "_", MODEL_NAME).strip("_").lower()
+CATEGORY_EMBEDDING_SEARCH_K = int(os.getenv("STOREPILOT_CATEGORY_EMBEDDING_SEARCH_K", "15"))
+CATEGORY_EMBEDDING_CANDIDATE_K = int(os.getenv("STOREPILOT_CATEGORY_EMBEDDING_CANDIDATE_K", "5"))
 
 LLM_API_KEY = os.getenv("STOREPILOT_LLM_API_KEY", "")
 LLM_BASE_URL = os.getenv("STOREPILOT_LLM_BASE_URL", "https://api.openai.com/v1").rstrip("/")

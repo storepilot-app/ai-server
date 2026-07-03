@@ -5,9 +5,10 @@ import numpy as np
 
 from app.category_matcher import service
 from app.category_matcher.decision.policy import auto_accepted_category
+from app.category_matcher.llm.judge import ProductCandidates
 from app.category_matcher.product_memory.store import NaverCategoryLabel, ProductSearchHit
 from app.category_matcher.retrieval.evidence import build_product_evidence
-from app.category_matcher.schemas import ProductItem
+from app.category_matcher.schemas import PredictionCandidate, ProductItem
 
 
 class ProductEvidenceTest(unittest.TestCase):
@@ -51,6 +52,27 @@ class ProductEvidenceTest(unittest.TestCase):
 
         self.assertIsNotNone(accepted)
         self.assertEqual(1, accepted.categoryId)
+
+    def test_category_embedding_candidates_exclude_product_categories_and_fill_five(self):
+        item = ProductCandidates(product=ProductItem(rowId=1, productName="product"), candidates=[])
+        hits = [ProductSearchHit("product A", (self.category_a,), 0.95)]
+        direct_candidates = [
+            PredictionCandidate(categoryId=1, categoryCode="NAVER-A", fullPath=self.category_a.full_path, score=0.99),
+        ] + [
+            PredictionCandidate(
+                categoryId=index,
+                categoryCode=f"NAVER-{index}",
+                fullPath=f"Category > {index}",
+                score=0.90 - index * 0.01,
+            )
+            for index in range(3, 9)
+        ]
+
+        attached = service.attach_product_evidence(item, hits, direct_candidates)
+
+        self.assertEqual(5, len(attached.candidates))
+        self.assertNotIn(1, [candidate.categoryId for candidate in attached.candidates])
+        self.assertEqual([3, 4, 5, 6, 7], [candidate.categoryId for candidate in attached.candidates])
 
     def test_predict_skips_llm_when_product_evidence_is_auto_accepted(self):
         hits = [[
