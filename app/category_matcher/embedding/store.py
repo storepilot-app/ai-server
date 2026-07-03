@@ -4,9 +4,10 @@ import numpy as np
 import torch
 from sentence_transformers import SentenceTransformer
 
-from app.category_matcher.schemas import CategoryItem
+from app.category_matcher.schemas import CategoryItem, PredictionCandidate
 from app.category_matcher.config.settings import (
     CACHE_ROOT,
+    CATEGORY_EMBEDDING_SEARCH_K,
     EMBEDDING_BATCH_SIZE,
     EMBEDDING_DEVICE,
     EMBEDDING_USE_FP16,
@@ -79,6 +80,45 @@ def load_category_cache(version_id: int) -> tuple[np.ndarray, list[dict]]:
     embeddings = np.load(embeddings_path)
     categories = json.loads(meta_path.read_text(encoding="utf-8"))
     return embeddings, categories
+
+
+def load_category_metadata(version_id: int) -> list[dict]:
+    meta_path = category_cache_dir(version_id) / "category_meta.json"
+    if not meta_path.exists():
+        return []
+    return json.loads(meta_path.read_text(encoding="utf-8"))
+
+
+def search_category_candidates_by_vectors(
+    version_id: int,
+    query_vectors: np.ndarray,
+) -> list[list[PredictionCandidate]]:
+    if query_vectors.size == 0:
+        return []
+
+    category_embeddings, categories = load_category_cache(version_id)
+    if category_embeddings.size == 0 or not categories:
+        return [[] for _ in range(len(query_vectors))]
+    if query_vectors.shape[1] != category_embeddings.shape[1]:
+        return [[] for _ in range(len(query_vectors))]
+
+    scores = query_vectors @ category_embeddings.T
+    limit = min(max(1, CATEGORY_EMBEDDING_SEARCH_K), len(categories))
+    top_indices = np.argpartition(scores, -limit, axis=1)[:, -limit:]
+    results: list[list[PredictionCandidate]] = []
+
+    for row_index, indices in enumerate(top_indices):
+        sorted_indices = sorted(indices, key=lambda index: float(scores[row_index, index]), reverse=True)
+        results.append([
+            PredictionCandidate(
+                categoryId=int(categories[index]["categoryId"]),
+                categoryCode=str(categories[index]["categoryCode"]),
+                fullPath=str(categories[index]["fullPath"]),
+                score=float(scores[row_index, index]),
+            )
+            for index in sorted_indices
+        ])
+    return results
 
 
 def category_cache_dir(version_id: int):

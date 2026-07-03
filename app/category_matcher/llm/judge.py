@@ -2,7 +2,9 @@ import json
 import logging
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from time import perf_counter
 
 from app.category_matcher.schemas import (
     CategoryDistributionItem,
@@ -14,13 +16,14 @@ from app.category_matcher.config.settings import (
     LLM_API_KEY,
     LLM_BASE_URL,
     LLM_BATCH_SIZE,
+    LLM_MAX_CONCURRENCY,
     LLM_MODEL,
-    LLM_THRESHOLD,
     LLM_TIMEOUT_SECONDS,
+    PRODUCT_REPRESENTATIVE_K,
 )
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn.error").getChild("storepilot.category_matcher.llm")
 
 
 @dataclass(frozen=True)
@@ -38,18 +41,45 @@ class ProductCandidates:
     similar_products: list[SimilarProductItem] = field(default_factory=list)
     category_distribution: list[CategoryDistributionItem] = field(default_factory=list)
 
-    def selection_candidates(self) -> list[PredictionCandidate]:
-        if not self.similar_products:
-            return self.candidates
-        return [
+    def category_options(self) -> list[tuple[PredictionCandidate, str]]:
+        options: list[tuple[PredictionCandidate, str]] = []
+        seen_categories: set[tuple[int | None, str]] = set()
+
+        product_candidates = [
             PredictionCandidate(
-                categoryId=product.categoryId,
-                categoryCode=product.categoryCode,
-                fullPath=product.fullPath,
-                score=product.similarity,
+                categoryId=category.categoryId,
+                categoryCode=category.categoryCode,
+                fullPath=category.fullPath,
+                score=category.maxSimilarity,
             )
-            for product in self.similar_products
+            for category in self.category_distribution[:PRODUCT_REPRESENTATIVE_K]
         ]
+        if not product_candidates and self.similar_products:
+            product_candidates = [
+                PredictionCandidate(
+                    categoryId=product.categoryId,
+                    categoryCode=product.categoryCode,
+                    fullPath=product.fullPath,
+                    score=product.similarity,
+                )
+                for product in self.similar_products
+            ]
+
+        for candidate in product_candidates:
+            key = (candidate.categoryId, candidate.fullPath)
+            if key not in seen_categories:
+                seen_categories.add(key)
+                options.append((candidate, "SIMILAR_PRODUCT"))
+
+        for candidate in self.candidates:
+            key = (candidate.categoryId, candidate.fullPath)
+            if key not in seen_categories:
+                seen_categories.add(key)
+                options.append((candidate, "CATEGORY_EMBEDDING"))
+        return options
+
+    def selection_candidates(self) -> list[PredictionCandidate]:
+        return [candidate for candidate, _ in self.category_options()]
 
 
 def select_candidate_with_llm(product_name: str, candidates: list[PredictionCandidate]) -> LlmSelection:
@@ -62,15 +92,52 @@ def select_candidates_with_llm_batch(items: list[ProductCandidates]) -> dict[int
     if not items:
         return selections
 
-    for chunk in chunks(items, max(1, LLM_BATCH_SIZE)):
-        selections.update(select_candidates_chunk_with_llm(chunk))
+    batch_started_at = perf_counter()
+    item_chunks = list(chunks(items, max(1, LLM_BATCH_SIZE)))
+    worker_count = min(len(item_chunks), max(1, LLM_MAX_CONCURRENCY))
+    with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="category-llm") as executor:
+        futures = {
+            executor.submit(select_candidates_chunk_with_llm, chunk): (chunk_index, chunk)
+            for chunk_index, chunk in enumerate(item_chunks, start=1)
+        }
+        for future in as_completed(futures):
+            chunk_index, chunk = futures[future]
+            chunk_started_at = perf_counter()
+            try:
+                chunk_selections = future.result()
+            except Exception as error:
+                detail = summarize_llm_error(error)
+                logger.exception("Unexpected concurrent LLM chunk failure: %s", detail)
+                chunk_selections = {
+                    item.product.rowId: fallback_llm_selection(item.selection_candidates(), "FAILED", detail)
+                    for item in chunk
+                }
+            selections.update(chunk_selections)
+            logger.info(
+                "llm_category_chunk_result chunk=%d/%d items=%d selected=%d rejected=%d failed=%d",
+                chunk_index,
+                len(item_chunks),
+                len(chunk),
+                sum(selection.status == "SELECTED" for selection in chunk_selections.values()),
+                sum(selection.status == "REJECTED" for selection in chunk_selections.values()),
+                sum(selection.status == "FAILED" for selection in chunk_selections.values()),
+            )
+    logger.info(
+        "llm_category_batch_timing items=%d chunks=%d concurrency=%d elapsed_ms=%.1f",
+        len(items),
+        len(item_chunks),
+        worker_count,
+        elapsed_ms(batch_started_at),
+    )
     return selections
 
 
 def select_candidates_chunk_with_llm(items: list[ProductCandidates]) -> dict[int, LlmSelection]:
     if not LLM_API_KEY:
         return {
-            item.product.rowId: fallback_llm_selection(item.candidates, "SKIPPED", "LLM API key is not set.")
+            item.product.rowId: fallback_llm_selection(
+                item.selection_candidates(), "SKIPPED", "LLM API key is not set."
+            )
             for item in items
         }
 
@@ -80,12 +147,12 @@ def select_candidates_chunk_with_llm(items: list[ProductCandidates]) -> dict[int
         detail = summarize_llm_error(error)
         logger.warning("LLM category judge batch failed: %s", detail)
         return {
-            item.product.rowId: fallback_llm_selection(item.candidates, "FAILED", detail)
+            item.product.rowId: fallback_llm_selection(item.selection_candidates(), "FAILED", detail)
             for item in items
         }
 
     decisions_by_row_id = {
-        decision.get("rowId"): decision
+        decision.get("id", decision.get("rowId")): decision
         for decision in decisions
         if isinstance(decision, dict)
     }
@@ -107,10 +174,10 @@ def fallback_llm_selection(candidates: list[PredictionCandidate], status: str, d
 def selection_from_llm_decision(candidates: list[PredictionCandidate], decision: dict | None) -> LlmSelection:
     if decision is None:
         return fallback_llm_selection(candidates, "FAILED", "LLM response did not include this rowId.")
-    if decision.get("matched") is not True:
+    if decision.get("m", decision.get("matched")) is not True:
         return LlmSelection(selected_candidate=None, used=True, status="REJECTED")
 
-    selected_index = decision.get("selectedIndex")
+    selected_index = decision.get("i", decision.get("selectedIndex"))
     if not isinstance(selected_index, int) or selected_index < 0 or selected_index >= len(candidates):
         return LlmSelection(
             selected_candidate=candidates[0],
@@ -158,50 +225,39 @@ def request_llm_category_decisions(items: list[ProductCandidates]) -> list[dict]
             {
                 "role": "system",
                 "content": (
-                    "You are a strict Naver shopping category judge. "
-                    "Choose the best category only from the similar-product candidates. "
-                    "Use the category distribution as supporting evidence. "
-                    "A high similarity alone is not proof when nearby products disagree. "
-                    "For each item, prefer choosing the single best category when one candidate is clearly better than the others. "
-                    "Reject all candidates only when every candidate is unrelated or too broad. "
-                    "Return compact JSON only with key results. results must be an array of objects with keys: "
-                    "rowId(integer), matched(boolean), selectedIndex(integer or null), confidence(number from 0 to 1), reason(string). "
-                    "Keep each reason under 20 Korean characters."
+                    "Choose one Naver category option per product. "
+                    "categoryOptions=[index,category,score,source]. "
+                    "Select an option only when the product name provides enough evidence that the option "
+                    "matches the product's primary shopping category. "
+                    "Treat score and source as retrieval metadata, never as proof of a match. "
+                    "Do not choose a more specific category based only on weak clues, brand/character names, "
+                    "material, color, quantity, shape, or common use assumptions. "
+                    "Prefer a broader/general category over an overly specific category when the product's exact use is unclear. "
+                    "Reject when all options are too specific, imply a different product type, "
+                    "or require assumptions not supported by the product name. "
+                    "Still distinguish accessories from main products. "
+                    "When evidence is ambiguous or insufficient, reject rather than guess. "
+                    "If every option is unsuitable or too specific, set matched=false and selectedIndex=null. "
+                    "Return JSON only: "
+                    "{\"results\":[{\"rowId\":integer,\"matched\":boolean,\"selectedIndex\":integer|null}]}"
                 ),
             },
             {
                 "role": "user",
                 "content": json.dumps(
                     {
-                        "items": [
+                        "products": [
                             {
                                 "rowId": item.product.rowId,
                                 "productName": item.product.productName,
-                                "similarProductEvidenceStrong": bool(
-                                    item.similar_products
-                                    and item.similar_products[0].similarity >= LLM_THRESHOLD
-                                ),
-                                "similarProducts": [
-                                    {
-                                        "productName": product.productName,
-                                        "category": product.fullPath,
-                                        "similarity": round(product.similarity, 6),
-                                    }
-                                    for product in item.similar_products
-                                ],
-                                "categoryDistribution": [
-                                    {
-                                        "category": distribution.fullPath,
-                                        "support": round(distribution.support, 6),
-                                        "exampleCount": distribution.exampleCount,
-                                        "maxSimilarity": round(distribution.maxSimilarity, 6),
-                                    }
-                                    for distribution in item.category_distribution
-                                ],
-                                "selectionSource": "SIMILAR_PRODUCTS",
-                                "candidates": [
-                                    _llm_candidate_payload(item, index)
-                                    for index, _ in enumerate(item.selection_candidates())
+                                "categoryOptions": [
+                                    [
+                                        index,
+                                        candidate.fullPath,
+                                        round(candidate.score, 4),
+                                        source,
+                                    ]
+                                    for index, (candidate, source) in enumerate(item.category_options())
                                 ],
                             }
                             for item in items
@@ -212,39 +268,42 @@ def request_llm_category_decisions(items: list[ProductCandidates]) -> list[dict]
             },
         ],
     }
+    request_data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(
         f"{LLM_BASE_URL}/chat/completions",
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        data=request_data,
         headers={
             "Authorization": f"Bearer {LLM_API_KEY}",
             "Content-Type": "application/json",
         },
         method="POST",
     )
+    request_started_at = perf_counter()
     with urllib.request.urlopen(request, timeout=LLM_TIMEOUT_SECONDS) as response:
-        response_body = json.loads(response.read().decode("utf-8"))
+        response_bytes = response.read()
+        response_body = json.loads(response_bytes.decode("utf-8"))
+    logger.info(
+        "openai_category_request_timing model=%s items=%d request_bytes=%d response_bytes=%d "
+        "prompt_tokens=%s completion_tokens=%s elapsed_ms=%.1f",
+        LLM_MODEL,
+        len(items),
+        len(request_data),
+        len(response_bytes),
+        response_body.get("usage", {}).get("prompt_tokens", "unknown"),
+        response_body.get("usage", {}).get("completion_tokens", "unknown"),
+        elapsed_ms(request_started_at),
+    )
 
     content = response_body["choices"][0]["message"]["content"]
     parsed = parse_llm_json(content)
-    results = parsed.get("results")
+    results = parsed.get("r", parsed.get("results"))
     if not isinstance(results, list):
         raise ValueError("LLM response did not contain results array.")
     return results
 
 
-def _llm_candidate_payload(item: ProductCandidates, index: int) -> dict:
-    candidate = item.selection_candidates()[index]
-    payload = {
-        "index": index,
-        "fullPath": candidate.fullPath,
-    }
-    if item.similar_products:
-        product = item.similar_products[index]
-        payload["similarProductName"] = product.productName
-        payload["similarity"] = product.similarity
-    else:
-        payload["embeddingScore"] = candidate.score
-    return payload
+def elapsed_ms(started_at: float) -> float:
+    return (perf_counter() - started_at) * 1000
 
 
 def chunks(items: list[ProductCandidates], size: int) -> list[list[ProductCandidates]]:
