@@ -122,7 +122,7 @@ uv run python -m scripts.rebuild_product_index `
   ..\List_20260627133027_uno1969_3.xlsx
 ```
 
-The same rebuild is available through `POST /ai/categories/product-index/rebuild`. Spring Boot exposes the proxy API as `POST /api/v1/admin/training-products/rebuild`; its `userKey` is used only to resolve the source my-category codes while rebuilding. The resulting index is stored at `ai-cache/products/<model>/shared` and all users search the same index.
+The same rebuild is available through `POST /ai/categories/product-index/rebuild`. Spring Boot exposes the proxy API as `POST /api/v1/admin/training-products/rebuild`; its `userId` is used only to resolve the source my-category codes while rebuilding. The resulting index is stored at `ai-cache/products/<model>/shared` and all users search the same index.
 
 Prediction searches the historical index for 20 products, collapses near duplicates, and computes the category distribution from the complete set. It also searches the Naver category embedding cache, removes categories already present in the historical-product Top 5, and adds up to five direct-category candidates. A high-confidence historical-product consensus bypasses the LLM.
 

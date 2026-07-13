@@ -45,12 +45,12 @@ def predict(request: PredictRequest) -> PredictResponse:
 
 @router.post("/product-index/rebuild", response_model=ProductIndexRebuildResponse)
 def rebuild_products(
-    user_key: str = Form(alias="userKey"),
+    user_id: int = Form(alias="userId"),
     category_mappings: str = Form(alias="categoryMappings"),
     files: list[UploadFile] = File(),
 ) -> ProductIndexRebuildResponse:
-    if not user_key.strip():
-        raise HTTPException(status_code=400, detail="userKey is required.")
+    if user_id <= 0:
+        raise HTTPException(status_code=400, detail="userId is required.")
     if not files:
         raise HTTPException(status_code=400, detail="At least one Excel file is required.")
     if any(not (file.filename or "").lower().endswith(".xlsx") for file in files):
@@ -74,7 +74,7 @@ def rebuild_products(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
     return ProductIndexRebuildResponse(
-        userKey=user_key.strip(),
+        userId=user_id,
         sourceCount=len(files),
         sourceRowCount=result.source_row_count,
         validRowCount=result.valid_row_count,
@@ -100,7 +100,7 @@ def add_feedback(request: ProductFeedbackRequest) -> ProductFeedbackResponse:
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     return ProductFeedbackResponse(
-        userKey=request.userKey.strip(),
+        userId=request.userId,
         indexedProductCount=count,
         message="Product correction added to the search index.",
     )

@@ -81,7 +81,7 @@ class PredictResponse(BaseModel):
 
 
 class ProductIndexRebuildResponse(BaseModel):
-    userKey: str
+    userId: int
     sourceCount: int
     sourceRowCount: int
     validRowCount: int
@@ -93,7 +93,7 @@ class ProductIndexRebuildResponse(BaseModel):
 
 
 class ProductFeedbackRequest(BaseModel):
-    userKey: str
+    userId: int
     productName: str
     categoryId: int
     categoryCode: str
@@ -101,6 +101,6 @@ class ProductFeedbackRequest(BaseModel):
 
 
 class ProductFeedbackResponse(BaseModel):
-    userKey: str
+    userId: int
     indexedProductCount: int
     message: str
