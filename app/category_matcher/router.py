@@ -72,6 +72,8 @@ def rebuild_products(
         result = rebuild_product_index([file.file for file in files], mappings)
     except (json.JSONDecodeError, ValueError, OSError, zipfile.BadZipFile) as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
 
     return ProductIndexRebuildResponse(
         userId=user_id,
@@ -99,6 +101,8 @@ def add_feedback(request: ProductFeedbackRequest) -> ProductFeedbackResponse:
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
     return ProductFeedbackResponse(
         userId=request.userId,
         indexedProductCount=count,
