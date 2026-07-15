@@ -12,5 +12,9 @@ class EmbeddingProvider(Protocol):
     def model_name(self) -> str:
         ...
 
+    @property
+    def cache_key(self) -> str:
+        ...
+
     def embed(self, texts: list[str]) -> np.ndarray:
         ...

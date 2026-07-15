@@ -6,7 +6,6 @@ from app.category_matcher.schemas import CategoryItem, PredictionCandidate
 from app.category_matcher.config.settings import (
     CACHE_ROOT,
     CATEGORY_EMBEDDING_SEARCH_K,
-    MODEL_CACHE_KEY,
 )
 from app.category_matcher.embedding.factory import get_embedding_provider
 
@@ -94,7 +93,7 @@ def search_category_candidates_by_vectors(
 
 
 def category_cache_dir(version_id: int):
-    return CACHE_ROOT / MODEL_CACHE_KEY / f"version-{version_id}"
+    return CACHE_ROOT / get_embedding_provider().cache_key / f"version-{version_id}"
 
 
 def category_text(category: CategoryItem) -> str:

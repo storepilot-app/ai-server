@@ -20,6 +20,12 @@ class LocalEmbeddingProvider:
     def model_name(self) -> str:
         return MODEL_NAME
 
+    @property
+    def cache_key(self) -> str:
+        from app.category_matcher.config.settings import MODEL_CACHE_KEY
+
+        return MODEL_CACHE_KEY
+
     def embed(self, texts: list[str]) -> np.ndarray:
         if not texts:
             return np.empty((0, 0), dtype=np.float32)

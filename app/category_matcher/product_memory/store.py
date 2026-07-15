@@ -319,7 +319,7 @@ def _save_index(index: faiss.Index, products: list[HistoricalProduct]) -> None:
 
 
 def _product_cache_dir() -> Path:
-    return PRODUCT_CACHE_ROOT / MODEL_CACHE_KEY / "shared"
+    return PRODUCT_CACHE_ROOT / get_embedding_provider().cache_key / "shared"
 
 
 def _new_index(dimension: int) -> faiss.Index:
