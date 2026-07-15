@@ -4,6 +4,7 @@ from pathlib import Path
 
 
 MODEL_NAME = os.getenv("STOREPILOT_EMBEDDING_MODEL", "BAAI/bge-m3")
+EMBEDDING_PROVIDER = os.getenv("STOREPILOT_EMBEDDING_PROVIDER", "local").strip().lower()
 EMBEDDING_DEVICE = os.getenv("STOREPILOT_EMBEDDING_DEVICE", "auto").strip().lower()
 EMBEDDING_BATCH_SIZE = int(os.getenv("STOREPILOT_EMBEDDING_BATCH_SIZE", "32"))
 EMBEDDING_USE_FP16 = os.getenv("STOREPILOT_EMBEDDING_USE_FP16", "true").strip().lower() in {"1", "true", "yes"}
