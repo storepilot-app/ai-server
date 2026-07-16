@@ -1,55 +1,17 @@
 import json
 
 import numpy as np
-import torch
-from sentence_transformers import SentenceTransformer
 
 from app.category_matcher.schemas import CategoryItem, PredictionCandidate
 from app.category_matcher.config.settings import (
     CACHE_ROOT,
     CATEGORY_EMBEDDING_SEARCH_K,
-    EMBEDDING_BATCH_SIZE,
-    EMBEDDING_DEVICE,
-    EMBEDDING_USE_FP16,
-    MODEL_CACHE_KEY,
-    MODEL_NAME,
 )
-
-
-_model: SentenceTransformer | None = None
-
-
-def get_model() -> SentenceTransformer:
-    global _model
-    if _model is None:
-        device = _resolve_device()
-        _model = SentenceTransformer(MODEL_NAME, device=device)
-        if device == "cuda" and EMBEDDING_USE_FP16:
-            _model.half()
-    return _model
+from app.category_matcher.embedding.factory import get_embedding_provider
 
 
 def embed(texts: list[str]) -> np.ndarray:
-    if not texts:
-        return np.empty((0, 0), dtype=np.float32)
-
-    vectors = get_model().encode(
-        texts,
-        normalize_embeddings=True,
-        batch_size=EMBEDDING_BATCH_SIZE,
-        show_progress_bar=False,
-    )
-    return np.asarray(vectors, dtype=np.float32)
-
-
-def _resolve_device() -> str:
-    if EMBEDDING_DEVICE == "auto":
-        return "cuda" if torch.cuda.is_available() else "cpu"
-    if EMBEDDING_DEVICE == "cuda" and not torch.cuda.is_available():
-        raise RuntimeError("STOREPILOT_EMBEDDING_DEVICE=cuda but CUDA is unavailable.")
-    if EMBEDDING_DEVICE not in {"cpu", "cuda"}:
-        raise ValueError(f"Unsupported embedding device: {EMBEDDING_DEVICE}")
-    return EMBEDDING_DEVICE
+    return get_embedding_provider().embed(texts)
 
 
 def rebuild_category_cache(version_id: int, categories: list[CategoryItem]) -> None:
@@ -60,8 +22,17 @@ def rebuild_category_cache(version_id: int, categories: list[CategoryItem]) -> N
     embeddings = embed(passages)
 
     np.save(version_dir / "category_embeddings.npy", embeddings)
+    provider = get_embedding_provider()
     (version_dir / "model.json").write_text(
-        json.dumps({"modelName": MODEL_NAME, "dimension": int(embeddings.shape[1])}, ensure_ascii=False, indent=2),
+        json.dumps(
+            {
+                "embeddingProvider": provider.provider_name,
+                "modelName": provider.model_name,
+                "dimension": int(embeddings.shape[1]),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
         encoding="utf-8",
     )
     (version_dir / "category_meta.json").write_text(
@@ -122,7 +93,7 @@ def search_category_candidates_by_vectors(
 
 
 def category_cache_dir(version_id: int):
-    return CACHE_ROOT / MODEL_CACHE_KEY / f"version-{version_id}"
+    return CACHE_ROOT / get_embedding_provider().cache_key / f"version-{version_id}"
 
 
 def category_text(category: CategoryItem) -> str:

@@ -13,7 +13,6 @@ import numpy as np
 
 from app.category_matcher.config.settings import (
     MODEL_CACHE_KEY,
-    MODEL_NAME,
     PRODUCT_CACHE_ROOT,
     PRODUCT_DUPLICATE_THRESHOLD,
     PRODUCT_HNSW_EF_CONSTRUCTION,
@@ -22,6 +21,7 @@ from app.category_matcher.config.settings import (
     PRODUCT_INDEX_TYPE,
     PRODUCT_SEARCH_K,
 )
+from app.category_matcher.embedding.factory import get_embedding_provider
 from app.category_matcher.embedding.store import embed
 from app.category_matcher.preprocess.query import preprocess_embedding_query
 from app.category_matcher.product_memory.excel import read_product_rows
@@ -248,9 +248,11 @@ def _load_index() -> LoadedProductIndex | None:
 
         index = faiss.read_index(str(index_path))
         payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+        provider = get_embedding_provider()
         if (
             payload.get("schemaVersion") != PRODUCT_INDEX_SCHEMA_VERSION
-            or payload.get("modelName") != MODEL_NAME
+            or payload.get("embeddingProvider", "local") != provider.provider_name
+            or payload.get("modelName") != provider.model_name
             or payload.get("indexType", "flat") != PRODUCT_INDEX_TYPE
         ):
             return None
@@ -284,11 +286,13 @@ def _save_index(index: faiss.Index, products: list[HistoricalProduct]) -> None:
     metadata_temp = directory / "products.json.tmp"
 
     faiss.write_index(index, str(index_temp))
+    provider = get_embedding_provider()
     metadata_temp.write_text(
         json.dumps(
             {
                 "schemaVersion": PRODUCT_INDEX_SCHEMA_VERSION,
-                "modelName": MODEL_NAME,
+                "embeddingProvider": provider.provider_name,
+                "modelName": provider.model_name,
                 "indexType": PRODUCT_INDEX_TYPE,
                 "products": [
                     {
@@ -315,7 +319,7 @@ def _save_index(index: faiss.Index, products: list[HistoricalProduct]) -> None:
 
 
 def _product_cache_dir() -> Path:
-    return PRODUCT_CACHE_ROOT / MODEL_CACHE_KEY / "shared"
+    return PRODUCT_CACHE_ROOT / get_embedding_provider().cache_key / "shared"
 
 
 def _new_index(dimension: int) -> faiss.Index:

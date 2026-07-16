@@ -4,9 +4,16 @@ from pathlib import Path
 
 
 MODEL_NAME = os.getenv("STOREPILOT_EMBEDDING_MODEL", "BAAI/bge-m3")
+EMBEDDING_PROVIDER = os.getenv("STOREPILOT_EMBEDDING_PROVIDER", "local").strip().lower()
 EMBEDDING_DEVICE = os.getenv("STOREPILOT_EMBEDDING_DEVICE", "auto").strip().lower()
 EMBEDDING_BATCH_SIZE = int(os.getenv("STOREPILOT_EMBEDDING_BATCH_SIZE", "32"))
 EMBEDDING_USE_FP16 = os.getenv("STOREPILOT_EMBEDDING_USE_FP16", "true").strip().lower() in {"1", "true", "yes"}
+EMBEDDING_API_KEY = os.getenv("STOREPILOT_EMBEDDING_API_KEY", "")
+EMBEDDING_API_BASE_URL = os.getenv("STOREPILOT_EMBEDDING_API_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+EMBEDDING_API_MODEL = os.getenv("STOREPILOT_EMBEDDING_API_MODEL", "text-embedding-3-small")
+EMBEDDING_API_DIMENSIONS = int(os.getenv("STOREPILOT_EMBEDDING_API_DIMENSIONS", "1536"))
+EMBEDDING_API_TIMEOUT_SECONDS = float(os.getenv("STOREPILOT_EMBEDDING_API_TIMEOUT_SECONDS", "60"))
+EMBEDDING_API_BATCH_SIZE = int(os.getenv("STOREPILOT_EMBEDDING_API_BATCH_SIZE", "512"))
 CACHE_ROOT = Path(os.getenv("STOREPILOT_AI_CACHE_ROOT", "ai-cache/categories"))
 MODEL_CACHE_KEY = re.sub(r"[^A-Za-z0-9_.-]+", "_", MODEL_NAME).strip("_").lower()
 CATEGORY_EMBEDDING_SEARCH_K = int(os.getenv("STOREPILOT_CATEGORY_EMBEDDING_SEARCH_K", "15"))
