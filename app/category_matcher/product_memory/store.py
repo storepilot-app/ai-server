@@ -217,6 +217,50 @@ def add_product_feedback(product_name: str, category: NaverCategoryLabel) -> int
         return len(loaded.products)
 
 
+def add_product_feedbacks(feedbacks: list[tuple[str, NaverCategoryLabel]]) -> int:
+    global _loaded_index
+    products_to_add: list[HistoricalProduct] = []
+    products_to_update: dict[str, HistoricalProduct] = {}
+    for product_name, category in feedbacks:
+        normalized = normalize_product_title(product_name)
+        if not normalized or not category.category_code.strip():
+            continue
+        products_to_update[normalized] = HistoricalProduct(product_name.strip(), normalized, (category,))
+
+    if not products_to_update:
+        raise ValueError("At least one valid product feedback is required.")
+
+    with _lock:
+        loaded = _load_index()
+        if loaded is None:
+            products = list(products_to_update.values())
+            vectors = _embed_products(products)
+            index = _new_index(int(vectors.shape[1]))
+            index.add(vectors)
+            _save_index(index, products)
+            _loaded_index = LoadedProductIndex(index, products)
+            return len(products)
+
+        existing_indexes = {
+            product.normalized_title: index
+            for index, product in enumerate(loaded.products)
+        }
+        for normalized, product in products_to_update.items():
+            existing_index = existing_indexes.get(normalized)
+            if existing_index is None:
+                products_to_add.append(product)
+            else:
+                loaded.products[existing_index] = product
+
+        if products_to_add:
+            vectors = _embed_products(products_to_add)
+            loaded.index.add(vectors)
+            loaded.products.extend(products_to_add)
+
+        _save_index(loaded.index, loaded.products)
+        return len(loaded.products)
+
+
 def _embed_products(products: list[HistoricalProduct]) -> np.ndarray:
     if not products:
         raise ValueError("No product rows had a valid Naver category mapping.")

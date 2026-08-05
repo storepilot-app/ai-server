@@ -6,12 +6,14 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from app.category_matcher.product_memory.store import (
     NaverCategoryLabel,
     add_product_feedback,
+    add_product_feedbacks,
     rebuild_product_index,
 )
 from app.category_matcher.schemas import (
     MyCategoryMappingItem,
     PredictRequest,
     PredictResponse,
+    ProductFeedbackBatchRequest,
     ProductFeedbackRequest,
     ProductFeedbackResponse,
     ProductIndexRebuildResponse,
@@ -107,4 +109,29 @@ def add_feedback(request: ProductFeedbackRequest) -> ProductFeedbackResponse:
         userId=request.userId,
         indexedProductCount=count,
         message="Product correction added to the search index.",
+    )
+
+
+@router.post("/product-index/feedback/batch", response_model=ProductFeedbackResponse)
+def add_feedbacks(request: ProductFeedbackBatchRequest) -> ProductFeedbackResponse:
+    try:
+        count = add_product_feedbacks([
+            (
+                product.productName,
+                NaverCategoryLabel(
+                    category_id=product.categoryId,
+                    category_code=product.categoryCode,
+                    full_path=product.fullPath,
+                ),
+            )
+            for product in request.products
+        ])
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+    return ProductFeedbackResponse(
+        userId=request.userId,
+        indexedProductCount=count,
+        message="Product corrections added to the search index.",
     )

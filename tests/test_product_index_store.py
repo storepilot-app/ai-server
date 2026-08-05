@@ -46,6 +46,10 @@ class ProductIndexStoreTest(unittest.TestCase):
                 metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
                 hits = store.search_similar_products("휴대용 계산기")
                 count = store.add_product_feedback("전자 계산기", category_c)
+                batch_count = store.add_product_feedbacks([
+                    ("새 계산기", category_c),
+                    ("보드게임 주사위", category_b),
+                ])
                 loaded = store._load_index()
 
             self.assertEqual(3, result.valid_row_count)
@@ -56,6 +60,7 @@ class ProductIndexStoreTest(unittest.TestCase):
             self.assertNotIn("myCategoryCodes", metadata["products"][0])
             self.assertEqual("전자 계산기", hits[0].product_name)
             self.assertEqual(2, count)
+            self.assertEqual(3, batch_count)
             self.assertEqual((category_c,), loaded.products[0].categories)
 
     @staticmethod

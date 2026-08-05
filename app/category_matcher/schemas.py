@@ -100,6 +100,11 @@ class ProductFeedbackRequest(BaseModel):
     fullPath: str
 
 
+class ProductFeedbackBatchRequest(BaseModel):
+    userId: int
+    products: list[ProductFeedbackRequest]
+
+
 class ProductFeedbackResponse(BaseModel):
     userId: int
     indexedProductCount: int
