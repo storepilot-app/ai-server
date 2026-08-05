@@ -28,6 +28,8 @@ class ProductIndexStoreTest(unittest.TestCase):
                     ("전자 계산기", "MY-A"),
                     ("보드게임 주사위", "MY-B"),
                 ],
+                product_column="B",
+                category_column="F",
             )
 
             with patch.object(store, "PRODUCT_CACHE_ROOT", root / "cache"), patch.object(
@@ -69,15 +71,20 @@ class ProductIndexStoreTest(unittest.TestCase):
         return np.asarray(vectors, dtype=np.float32)
 
     @staticmethod
-    def _write_workbook(path: Path, rows: list[tuple[str, str]]) -> None:
+    def _write_workbook(
+        path: Path,
+        rows: list[tuple[str, str]],
+        product_column: str = "D",
+        category_column: str = "T",
+    ) -> None:
         xml_rows = [
-            '<row r="1"><c r="D1" t="inlineStr"><is><t>상품명</t></is></c>'
-            '<c r="T1" t="inlineStr"><is><t>마이카테</t></is></c></row>'
+            f'<row r="1"><c r="{product_column}1" t="inlineStr"><is><t>상품명</t></is></c>'
+            f'<c r="{category_column}1" t="inlineStr"><is><t>마이카테</t></is></c></row>'
         ]
         for row_number, (product_name, category) in enumerate(rows, start=2):
             xml_rows.append(
-                f'<row r="{row_number}"><c r="D{row_number}" t="inlineStr"><is><t>{product_name}</t></is></c>'
-                f'<c r="T{row_number}" t="inlineStr"><is><t>{category}</t></is></c></row>'
+                f'<row r="{row_number}"><c r="{product_column}{row_number}" t="inlineStr"><is><t>{product_name}</t></is></c>'
+                f'<c r="{category_column}{row_number}" t="inlineStr"><is><t>{category}</t></is></c></row>'
             )
         sheet = (
             '<?xml version="1.0" encoding="UTF-8"?>'
