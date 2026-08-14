@@ -77,7 +77,7 @@ STOREPILOT_EMBEDDING_USE_FP16=true
 cd C:\Project\StorePilot\ai-server
 $env:UV_CACHE_DIR="C:\Project\StorePilot\ai-server\.uv-cache"
 $env:UV_PYTHON_INSTALL_DIR="C:\Project\StorePilot\ai-server\.uv-python"
-uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
+uv run python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 헬스 체크:
