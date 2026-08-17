@@ -1,5 +1,7 @@
 import json
+import logging
 import re
+from time import perf_counter
 import urllib.error
 import urllib.request
 
@@ -13,6 +15,9 @@ from app.category_matcher.config.settings import (
     EMBEDDING_API_MODEL,
     EMBEDDING_API_TIMEOUT_SECONDS,
 )
+
+
+logger = logging.getLogger("uvicorn.error").getChild("storepilot.embedding_api")
 
 
 class OpenAIEmbeddingProvider:
@@ -41,6 +46,7 @@ class OpenAIEmbeddingProvider:
         return np.vstack(batches).astype(np.float32, copy=False)
 
     def _embed_batch(self, texts: list[str]) -> np.ndarray:
+        started_at = perf_counter()
         payload: dict[str, object] = {
             "model": EMBEDDING_API_MODEL,
             "input": texts,
@@ -71,6 +77,16 @@ class OpenAIEmbeddingProvider:
         vectors = np.asarray([row["embedding"] for row in rows], dtype=np.float32)
         if vectors.shape[0] != len(texts):
             raise RuntimeError("Embedding API response count did not match request count.")
+        usage = body.get("usage", {})
+        logger.info(
+            "embedding_api_timing model=%s inputs=%d dimensions=%d prompt_tokens=%s total_tokens=%s elapsed_ms=%.1f",
+            EMBEDDING_API_MODEL,
+            len(texts),
+            int(vectors.shape[1]),
+            usage.get("prompt_tokens", "unknown"),
+            usage.get("total_tokens", "unknown"),
+            (perf_counter() - started_at) * 1000,
+        )
         return _normalize(vectors)
 
 

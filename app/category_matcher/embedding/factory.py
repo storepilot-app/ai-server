@@ -1,6 +1,4 @@
 from app.category_matcher.config.settings import EMBEDDING_PROVIDER
-from app.category_matcher.embedding.local_provider import LocalEmbeddingProvider
-from app.category_matcher.embedding.openai_provider import OpenAIEmbeddingProvider
 from app.category_matcher.embedding.provider import EmbeddingProvider
 
 
@@ -16,7 +14,11 @@ def get_embedding_provider() -> EmbeddingProvider:
 
 def _create_embedding_provider() -> EmbeddingProvider:
     if EMBEDDING_PROVIDER in {"local", "bge", "bge-m3"}:
+        from app.category_matcher.embedding.local_provider import LocalEmbeddingProvider
+
         return LocalEmbeddingProvider()
     if EMBEDDING_PROVIDER in {"openai", "api"}:
+        from app.category_matcher.embedding.openai_provider import OpenAIEmbeddingProvider
+
         return OpenAIEmbeddingProvider()
     raise ValueError(f"Unsupported embedding provider: {EMBEDDING_PROVIDER}")

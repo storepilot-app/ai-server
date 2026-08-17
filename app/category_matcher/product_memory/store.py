@@ -12,7 +12,6 @@ import faiss
 import numpy as np
 
 from app.category_matcher.config.settings import (
-    MODEL_CACHE_KEY,
     PRODUCT_CACHE_ROOT,
     PRODUCT_DUPLICATE_THRESHOLD,
     PRODUCT_HNSW_EF_CONSTRUCTION,

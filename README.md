@@ -54,7 +54,19 @@ uv sync --python C:\Path\To\Python312\python.exe
 
 서버는 `app.main`을 통해 실행될 때 `ai-server/.env`를 자동으로 읽습니다. 단, 실제 프로세스 환경변수가 이미 설정되어 있으면 `.env`보다 우선합니다.
 
-로컬 BGE-M3 CPU 실행 권장 설정:
+기본 권장 설정은 OpenAI 임베딩 API입니다.
+
+```env
+STOREPILOT_EMBEDDING_PROVIDER=openai
+STOREPILOT_EMBEDDING_API_KEY=
+STOREPILOT_EMBEDDING_API_BASE_URL=https://api.openai.com/v1
+STOREPILOT_EMBEDDING_API_MODEL=text-embedding-3-small
+STOREPILOT_EMBEDDING_API_DIMENSIONS=1536
+STOREPILOT_EMBEDDING_API_TIMEOUT_SECONDS=60
+STOREPILOT_EMBEDDING_API_BATCH_SIZE=512
+```
+
+외부 API 대신 로컬 BGE-M3를 사용하려면:
 
 ```env
 STOREPILOT_EMBEDDING_PROVIDER=local
@@ -62,13 +74,6 @@ STOREPILOT_EMBEDDING_MODEL=BAAI/bge-m3
 STOREPILOT_EMBEDDING_DEVICE=cpu
 STOREPILOT_EMBEDDING_BATCH_SIZE=32
 STOREPILOT_EMBEDDING_USE_FP16=false
-```
-
-CUDA가 가능한 PyTorch 환경에서 자동 GPU 선택을 사용하려면:
-
-```env
-STOREPILOT_EMBEDDING_DEVICE=auto
-STOREPILOT_EMBEDDING_USE_FP16=true
 ```
 
 ## 실행
@@ -105,8 +110,8 @@ cpu
 
 AI 서버는 Provider 구조로 임베딩 방식을 선택합니다.
 
-- `local`: 로컬 sentence-transformers 모델 사용, 현재 기본값은 `BAAI/bge-m3`
-- `openai`: OpenAI 호환 embeddings API 사용
+- `openai`: OpenAI 호환 embeddings API 사용, 현재 기본값
+- `local`: 로컬 sentence-transformers 모델 사용, 기본 로컬 모델은 `BAAI/bge-m3`
 
 OpenAI 호환 임베딩 API 설정:
 
@@ -120,7 +125,7 @@ STOREPILOT_EMBEDDING_API_TIMEOUT_SECONDS=60
 STOREPILOT_EMBEDDING_API_BATCH_SIZE=512
 ```
 
-OpenAI 임베딩은 비교와 추후 확장성을 위해 지원합니다. 현재 StorePilot 카테고리 매칭 품질은 BGE-M3가 더 좋아 BGE-M3 사용을 기본으로 봅니다.
+OpenAI 임베딩 API 응답의 토큰 사용량과 응답시간은 `embedding_api_timing` 로그로 확인할 수 있습니다.
 
 ## 캐시 구조
 
@@ -142,8 +147,8 @@ ai-cache/products/<provider-model>/shared/
 임베딩 provider 또는 모델을 바꾸는 경우:
 
 1. AI 서버를 재시작합니다.
-2. 해당 provider/model에 맞는 캐시를 재사용하거나 새로 생성합니다.
-3. 필요한 캐시가 없을 때만 네이버 카테고리 또는 기존 상품을 다시 업로드합니다.
+2. 네이버 카테고리 임베딩 캐시를 새 provider/model로 생성합니다.
+3. 기존 상품 FAISS 인덱스도 같은 provider/model로 다시 생성합니다.
 
 오래된 캐시 삭제는 필수가 아닙니다. 디스크 용량을 줄이거나 혼동을 피하고 싶을 때만 삭제하면 됩니다.
 

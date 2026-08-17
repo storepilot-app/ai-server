@@ -42,7 +42,8 @@ class ProductIndexStoreTest(unittest.TestCase):
                     [workbook],
                     {"MY-A": category_a, "MY-B": category_b},
                 )
-                metadata_path = root / "cache" / store.MODEL_CACHE_KEY / "shared" / "products.json"
+                provider_cache_key = store.get_embedding_provider().cache_key
+                metadata_path = root / "cache" / provider_cache_key / "shared" / "products.json"
                 metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
                 hits = store.search_similar_products("휴대용 계산기")
                 count = store.add_product_feedback("전자 계산기", category_c)
