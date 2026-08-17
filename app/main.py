@@ -23,22 +23,6 @@ def load_project_env() -> None:
 
 load_project_env()
 
-def configure_native_thread_environment() -> None:
-    thread_count = os.getenv("STOREPILOT_TORCH_NUM_THREADS", "2")
-    for variable_name in (
-        "OMP_NUM_THREADS",
-        "MKL_NUM_THREADS",
-        "OPENBLAS_NUM_THREADS",
-    ):
-        os.environ[variable_name] = thread_count
-
-
-configure_native_thread_environment()
-
-from app.runtime import configure_cpu_runtime
-
-configure_cpu_runtime()
-
 from app.category_matcher.router import router as category_matcher_router
 
 app = FastAPI(title="StorePilot AI Server")
