@@ -249,10 +249,27 @@ STOREPILOT_LLM_MODEL=gpt-4o-mini
 STOREPILOT_LLM_BASE_URL=https://api.openai.com/v1
 STOREPILOT_LLM_TIMEOUT_SECONDS=90
 STOREPILOT_LLM_BATCH_SIZE=15
-STOREPILOT_LLM_MAX_CONCURRENCY=20
+STOREPILOT_LLM_MAX_CONCURRENCY=5
 ```
 
 `STOREPILOT_LLM_API_KEY`가 비어 있으면 LLM fallback은 실행되지 않습니다.
+
+## CPU 동시 실행 제한
+
+CPU에서 로컬 임베딩 모델과 FAISS를 실행하는 배포 서버는 다음 값으로 연산 스레드와
+동시 작업 수를 제한할 수 있습니다.
+
+```env
+STOREPILOT_TORCH_NUM_THREADS=2
+STOREPILOT_TORCH_NUM_INTEROP_THREADS=1
+STOREPILOT_FAISS_NUM_THREADS=2
+STOREPILOT_AI_MAX_CONCURRENT_CPU_TASKS=2
+```
+
+기본값은 물리 4코어 서버에서 CPU 작업 2개가 각각 연산 스레드 2개를 사용하는 구성을
+기준으로 합니다. `STOREPILOT_AI_MAX_CONCURRENT_CPU_TASKS`를 초과한 예측·인덱스 생성
+요청은 실행 중인 CPU 작업이 끝날 때까지 AI 서버 내부에서 대기합니다. Uvicorn worker는
+모델 메모리 중복과 CPU 경합을 피하기 위해 1개로 실행하는 것을 권장합니다.
 
 ## 테스트
 

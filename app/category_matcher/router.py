@@ -3,6 +3,7 @@ import zipfile
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
+from app.category_matcher.concurrency import cpu_task_slot
 from app.category_matcher.product_memory.store import (
     NaverCategoryLabel,
     add_product_feedback,
@@ -27,7 +28,8 @@ router = APIRouter()
 
 @router.post("/rebuild", response_model=RebuildResponse)
 def rebuild(request: RebuildRequest) -> RebuildResponse:
-    rebuild_category_cache(request.versionId, request.categories)
+    with cpu_task_slot():
+        rebuild_category_cache(request.versionId, request.categories)
     return RebuildResponse(
         versionId=request.versionId,
         categoryCount=len(request.categories),
@@ -37,12 +39,13 @@ def rebuild(request: RebuildRequest) -> RebuildResponse:
 
 @router.post("/predict", response_model=PredictResponse)
 def predict(request: PredictRequest) -> PredictResponse:
-    return PredictResponse(
-        results=predict_categories(
-            request.versionId,
-            request.products,
+    with cpu_task_slot():
+        return PredictResponse(
+            results=predict_categories(
+                request.versionId,
+                request.products,
+            )
         )
-    )
 
 
 @router.post("/product-index/rebuild", response_model=ProductIndexRebuildResponse)
@@ -71,7 +74,8 @@ def rebuild_products(
             )
             for item in mapping_items
         }
-        result = rebuild_product_index([file.file for file in files], mappings)
+        with cpu_task_slot():
+            result = rebuild_product_index([file.file for file in files], mappings)
     except (json.JSONDecodeError, ValueError, OSError, zipfile.BadZipFile) as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     except RuntimeError as error:
@@ -93,14 +97,15 @@ def rebuild_products(
 @router.post("/product-index/feedback", response_model=ProductFeedbackResponse)
 def add_feedback(request: ProductFeedbackRequest) -> ProductFeedbackResponse:
     try:
-        count = add_product_feedback(
-            request.productName,
-            NaverCategoryLabel(
-                category_id=request.categoryId,
-                category_code=request.categoryCode,
-                full_path=request.fullPath,
-            ),
-        )
+        with cpu_task_slot():
+            count = add_product_feedback(
+                request.productName,
+                NaverCategoryLabel(
+                    category_id=request.categoryId,
+                    category_code=request.categoryCode,
+                    full_path=request.fullPath,
+                ),
+            )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     except RuntimeError as error:
@@ -115,17 +120,18 @@ def add_feedback(request: ProductFeedbackRequest) -> ProductFeedbackResponse:
 @router.post("/product-index/feedback/batch", response_model=ProductFeedbackResponse)
 def add_feedbacks(request: ProductFeedbackBatchRequest) -> ProductFeedbackResponse:
     try:
-        count = add_product_feedbacks([
-            (
-                product.productName,
-                NaverCategoryLabel(
-                    category_id=product.categoryId,
-                    category_code=product.categoryCode,
-                    full_path=product.fullPath,
-                ),
-            )
-            for product in request.products
-        ])
+        with cpu_task_slot():
+            count = add_product_feedbacks([
+                (
+                    product.productName,
+                    NaverCategoryLabel(
+                        category_id=product.categoryId,
+                        category_code=product.categoryCode,
+                        full_path=product.fullPath,
+                    ),
+                )
+                for product in request.products
+            ])
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     except RuntimeError as error:
