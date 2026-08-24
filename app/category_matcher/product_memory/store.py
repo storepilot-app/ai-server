@@ -21,7 +21,7 @@ from app.category_matcher.config.settings import (
     PRODUCT_SEARCH_K,
 )
 from app.category_matcher.embedding.factory import get_embedding_provider
-from app.category_matcher.embedding.store import embed
+from app.category_matcher.embedding.store import embed_passages, embed_queries
 from app.category_matcher.preprocess.query import preprocess_embedding_query
 from app.category_matcher.product_memory.excel import read_product_rows
 
@@ -131,7 +131,7 @@ def rebuild_product_index(
 def search_similar_products(product_name: str) -> list[ProductSearchHit]:
     if not product_name.strip():
         return []
-    query = embed([preprocess_embedding_query(product_name)])
+    query = embed_queries([preprocess_embedding_query(product_name)])
     return search_similar_products_by_vector(query[0])
 
 
@@ -194,7 +194,7 @@ def add_product_feedback(product_name: str, category: NaverCategoryLabel) -> int
     with _lock:
         loaded = _load_index()
         if loaded is None:
-            vector = embed([preprocess_embedding_query(product_name)])
+            vector = embed_passages([preprocess_embedding_query(product_name)])
             index = _new_index(int(vector.shape[1]))
             index.add(vector)
             products = [HistoricalProduct(product_name.strip(), normalized, (category,))]
@@ -209,7 +209,7 @@ def add_product_feedback(product_name: str, category: NaverCategoryLabel) -> int
             _save_index(loaded.index, loaded.products)
             return len(loaded.products)
 
-        vector = embed([preprocess_embedding_query(product_name)])
+        vector = embed_passages([preprocess_embedding_query(product_name)])
         loaded.index.add(vector)
         loaded.products.append(HistoricalProduct(product_name.strip(), normalized, (category,)))
         _save_index(loaded.index, loaded.products)
@@ -267,7 +267,7 @@ def _embed_products(products: list[HistoricalProduct]) -> np.ndarray:
     batches: list[np.ndarray] = []
     for start in range(0, len(products), 512):
         batch = products[start:start + 512]
-        batches.append(embed([preprocess_embedding_query(product.product_name) for product in batch]))
+        batches.append(embed_passages([preprocess_embedding_query(product.product_name) for product in batch]))
         completed = min(start + len(batch), len(products))
         print(
             f"Product embedding progress: {completed:,}/{len(products):,} "

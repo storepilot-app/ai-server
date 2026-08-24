@@ -80,7 +80,7 @@ class ProductEvidenceTest(unittest.TestCase):
             for index in range(3)
         ]]
         with patch.object(
-            service, "embed", return_value=np.asarray([[1.0, 0.0]], dtype=np.float32)
+            service, "embed_queries", return_value=np.asarray([[1.0, 0.0]], dtype=np.float32)
         ), patch.object(service, "search_similar_products_by_vectors", return_value=hits), patch.object(
             service, "select_candidates_with_llm_batch", return_value={}
         ) as llm:
@@ -96,7 +96,7 @@ class ProductEvidenceTest(unittest.TestCase):
 
     def test_predict_returns_no_similar_products_without_category_search_or_llm(self):
         with patch.object(
-            service, "embed", return_value=np.asarray([[1.0, 0.0]], dtype=np.float32)
+            service, "embed_queries", return_value=np.asarray([[1.0, 0.0]], dtype=np.float32)
         ), patch.object(service, "search_similar_products_by_vectors", return_value=[[]]), patch.object(
             service, "select_candidates_with_llm_batch", return_value={}
         ) as llm:
@@ -117,7 +117,7 @@ class ProductEvidenceTest(unittest.TestCase):
             "fullPath": "출산/육아 > 완구/인형 > 미술놀이 > 클레이",
         }]
         with patch.object(
-            service, "embed", return_value=np.asarray([[1.0, 0.0]], dtype=np.float32)
+            service, "embed_queries", return_value=np.asarray([[1.0, 0.0]], dtype=np.float32)
         ), patch.object(
             service, "search_similar_products_by_vectors", return_value=[[]]
         ), patch.object(

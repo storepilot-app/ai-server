@@ -18,3 +18,9 @@ class EmbeddingProvider(Protocol):
 
     def embed(self, texts: list[str]) -> np.ndarray:
         ...
+
+    def embed_queries(self, texts: list[str]) -> np.ndarray:
+        ...
+
+    def embed_passages(self, texts: list[str]) -> np.ndarray:
+        ...

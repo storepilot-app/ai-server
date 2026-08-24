@@ -21,4 +21,8 @@ def _create_embedding_provider() -> EmbeddingProvider:
         from app.category_matcher.embedding.openai_provider import OpenAIEmbeddingProvider
 
         return OpenAIEmbeddingProvider()
+    if EMBEDDING_PROVIDER in {"solar", "upstage"}:
+        from app.category_matcher.embedding.solar_provider import SolarEmbeddingProvider
+
+        return SolarEmbeddingProvider()
     raise ValueError(f"Unsupported embedding provider: {EMBEDDING_PROVIDER}")

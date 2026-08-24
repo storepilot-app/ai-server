@@ -11,7 +11,17 @@ from app.category_matcher.embedding.factory import get_embedding_provider
 
 
 def embed(texts: list[str]) -> np.ndarray:
-    return get_embedding_provider().embed(texts)
+    return embed_queries(texts)
+
+
+def embed_queries(texts: list[str]) -> np.ndarray:
+    provider = get_embedding_provider()
+    return provider.embed_queries(texts)
+
+
+def embed_passages(texts: list[str]) -> np.ndarray:
+    provider = get_embedding_provider()
+    return provider.embed_passages(texts)
 
 
 def rebuild_category_cache(version_id: int, categories: list[CategoryItem]) -> None:
@@ -19,7 +29,7 @@ def rebuild_category_cache(version_id: int, categories: list[CategoryItem]) -> N
     version_dir.mkdir(parents=True, exist_ok=True)
 
     passages = [category_text(category) for category in categories]
-    embeddings = embed(passages)
+    embeddings = embed_passages(passages)
 
     np.save(version_dir / "category_embeddings.npy", embeddings)
     provider = get_embedding_provider()

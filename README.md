@@ -54,16 +54,18 @@ uv sync --python C:\Path\To\Python312\python.exe
 
 서버는 `app.main`을 통해 실행될 때 `ai-server/.env`를 자동으로 읽습니다. 단, 실제 프로세스 환경변수가 이미 설정되어 있으면 `.env`보다 우선합니다.
 
-기본 권장 설정은 OpenAI 임베딩 API입니다.
+기본 권장 설정은 Upstage Solar 임베딩 API입니다.
 
 ```env
-STOREPILOT_EMBEDDING_PROVIDER=openai
-STOREPILOT_EMBEDDING_API_KEY=
-STOREPILOT_EMBEDDING_API_BASE_URL=https://api.openai.com/v1
-STOREPILOT_EMBEDDING_API_MODEL=text-embedding-3-small
-STOREPILOT_EMBEDDING_API_DIMENSIONS=1536
-STOREPILOT_EMBEDDING_API_TIMEOUT_SECONDS=60
-STOREPILOT_EMBEDDING_API_BATCH_SIZE=512
+STOREPILOT_EMBEDDING_PROVIDER=solar
+STOREPILOT_SOLAR_EMBEDDING_API_KEY=
+STOREPILOT_SOLAR_EMBEDDING_API_BASE_URL=https://api.upstage.ai/v1
+STOREPILOT_SOLAR_EMBEDDING_QUERY_MODEL=solar-embedding-2-query
+STOREPILOT_SOLAR_EMBEDDING_PASSAGE_MODEL=solar-embedding-2-passage
+STOREPILOT_SOLAR_EMBEDDING_DIMENSIONS=1024
+STOREPILOT_SOLAR_EMBEDDING_TIMEOUT_SECONDS=60
+STOREPILOT_SOLAR_EMBEDDING_BATCH_SIZE=100
+STOREPILOT_SOLAR_EMBEDDING_REQUESTS_PER_MINUTE=90
 ```
 
 외부 API 대신 로컬 BGE-M3를 사용하려면:
@@ -110,8 +112,31 @@ cpu
 
 AI 서버는 Provider 구조로 임베딩 방식을 선택합니다.
 
-- `openai`: OpenAI 호환 embeddings API 사용, 현재 기본값
+- `solar`: Upstage Solar embeddings API 사용, 현재 기본값
+- `openai`: OpenAI embeddings API 사용
 - `local`: 로컬 sentence-transformers 모델 사용, 기본 로컬 모델은 `BAAI/bge-m3`
+
+Solar Embedding 2는 상품 검색 입력에는 `solar-embedding-2-query`, 카테고리와 기존 상품 인덱스에는
+`solar-embedding-2-passage`를 사용합니다. 두 모델을 같은 용도로 섞으면 유사도 검색 품질이
+떨어질 수 있으므로 역할별 모델 설정을 유지해야 합니다.
+
+Solar 임베딩 API 설정:
+
+```env
+STOREPILOT_EMBEDDING_PROVIDER=solar
+STOREPILOT_SOLAR_EMBEDDING_API_KEY=
+STOREPILOT_SOLAR_EMBEDDING_API_BASE_URL=https://api.upstage.ai/v1
+STOREPILOT_SOLAR_EMBEDDING_QUERY_MODEL=solar-embedding-2-query
+STOREPILOT_SOLAR_EMBEDDING_PASSAGE_MODEL=solar-embedding-2-passage
+STOREPILOT_SOLAR_EMBEDDING_DIMENSIONS=1024
+STOREPILOT_SOLAR_EMBEDDING_TIMEOUT_SECONDS=60
+STOREPILOT_SOLAR_EMBEDDING_BATCH_SIZE=100
+STOREPILOT_SOLAR_EMBEDDING_REQUESTS_PER_MINUTE=90
+```
+
+`STOREPILOT_SOLAR_EMBEDDING_REQUESTS_PER_MINUTE`는 같은 AI 서버 프로세스의 Solar 요청을
+전체 스레드에서 합산해 제한합니다. 기본값 90은 Upstage의 100 RPM 제한에 여유를 둔 값이며,
+`0`으로 설정하면 속도 제한을 사용하지 않습니다.
 
 OpenAI 호환 임베딩 API 설정:
 
@@ -125,7 +150,7 @@ STOREPILOT_EMBEDDING_API_TIMEOUT_SECONDS=60
 STOREPILOT_EMBEDDING_API_BATCH_SIZE=512
 ```
 
-OpenAI 임베딩 API 응답의 토큰 사용량과 응답시간은 `embedding_api_timing` 로그로 확인할 수 있습니다.
+Solar와 OpenAI 임베딩 API 응답의 토큰 사용량과 응답시간은 `embedding_api_timing` 로그로 확인할 수 있습니다.
 
 ## 캐시 구조
 
@@ -142,7 +167,7 @@ ai-cache/categories/<provider-model>/version-<versionId>/
 ai-cache/products/<provider-model>/shared/
 ```
 
-캐시는 provider/model/dimensions 기준으로 분리됩니다. 따라서 BGE-M3 캐시와 OpenAI 임베딩 캐시는 서로 덮어쓰지 않습니다.
+캐시는 provider/model/dimensions 기준으로 분리됩니다. 따라서 Solar, OpenAI, BGE-M3 캐시는 서로 덮어쓰지 않습니다.
 
 임베딩 provider 또는 모델을 바꾸는 경우:
 

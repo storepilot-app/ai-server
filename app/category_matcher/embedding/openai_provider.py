@@ -45,6 +45,12 @@ class OpenAIEmbeddingProvider:
             batches.append(self._embed_batch(batch))
         return np.vstack(batches).astype(np.float32, copy=False)
 
+    def embed_queries(self, texts: list[str]) -> np.ndarray:
+        return self.embed(texts)
+
+    def embed_passages(self, texts: list[str]) -> np.ndarray:
+        return self.embed(texts)
+
     def _embed_batch(self, texts: list[str]) -> np.ndarray:
         started_at = perf_counter()
         payload: dict[str, object] = {

@@ -4,7 +4,7 @@ from time import perf_counter
 from app.category_matcher.config.settings import CATEGORY_EMBEDDING_CANDIDATE_K, PRODUCT_REPRESENTATIVE_K
 from app.category_matcher.decision.policy import auto_accepted_category
 from app.category_matcher.embedding.store import (
-    embed,
+    embed_queries,
     load_category_metadata,
     rebuild_category_cache,
     search_category_candidates_by_vectors,
@@ -47,7 +47,7 @@ def predict_categories(
     preprocess_ms = elapsed_ms(preprocess_started_at)
 
     embedding_started_at = perf_counter()
-    query_embeddings = embed(queries)
+    query_embeddings = embed_queries(queries)
     embedding_ms = elapsed_ms(embedding_started_at)
 
     product_candidates = [ProductCandidates(product=product, candidates=[]) for product in products]

@@ -38,6 +38,12 @@ class LocalEmbeddingProvider:
         )
         return np.asarray(vectors, dtype=np.float32)
 
+    def embed_queries(self, texts: list[str]) -> np.ndarray:
+        return self.embed(texts)
+
+    def embed_passages(self, texts: list[str]) -> np.ndarray:
+        return self.embed(texts)
+
     def _get_model(self) -> SentenceTransformer:
         if self._model is None:
             device = self._resolve_device()

@@ -33,8 +33,8 @@ class ProductIndexStoreTest(unittest.TestCase):
             )
 
             with patch.object(store, "PRODUCT_CACHE_ROOT", root / "cache"), patch.object(
-                store, "embed", side_effect=self._fake_embed
-            ):
+                store, "embed_queries", side_effect=self._fake_embed
+            ), patch.object(store, "embed_passages", side_effect=self._fake_embed):
                 category_a = store.NaverCategoryLabel(1, "NAVER-A", "생활 > 문구 > 계산기")
                 category_b = store.NaverCategoryLabel(2, "NAVER-B", "생활 > 완구 > 보드게임")
                 category_c = store.NaverCategoryLabel(3, "NAVER-C", "생활 > 문구 > 전자계산기")
