@@ -116,9 +116,13 @@ AI 서버는 Provider 구조로 임베딩 방식을 선택합니다.
 - `openai`: OpenAI embeddings API 사용
 - `local`: 로컬 sentence-transformers 모델 사용, 기본 로컬 모델은 `BAAI/bge-m3`
 
-Solar Embedding 2는 상품 검색 입력에는 `solar-embedding-2-query`, 카테고리와 기존 상품 인덱스에는
-`solar-embedding-2-passage`를 사용합니다. 두 모델을 같은 용도로 섞으면 유사도 검색 품질이
-떨어질 수 있으므로 역할별 모델 설정을 유지해야 합니다.
+Solar Embedding 2는 카테고리 검색 입력에는 `solar-embedding-2-query`, 카테고리와 기존 상품
+인덱스 및 기존 상품 검색 입력에는 `solar-embedding-2-passage`를 사용합니다.
+
+카테고리 예측 시에는 동일한 상품명을 두 역할로 임베딩합니다. 기존 상품 검색은 입력 상품도
+passage로 임베딩하여 passage 상품 인덱스와 대칭 비교하고, 카테고리 검색은 query로 임베딩하여
+passage 카테고리 인덱스와 비대칭 비교합니다. BGE-M3와 OpenAI처럼 query와 passage가 같은
+provider는 한 번 생성한 passage 벡터를 두 검색에 재사용합니다.
 
 Solar 임베딩 API 설정:
 

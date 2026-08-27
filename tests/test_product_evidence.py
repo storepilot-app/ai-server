@@ -80,8 +80,14 @@ class ProductEvidenceTest(unittest.TestCase):
             for index in range(3)
         ]]
         with patch.object(
+            service, "embed_passages", return_value=np.asarray([[1.0, 0.0]], dtype=np.float32)
+        ), patch.object(
             service, "embed_queries", return_value=np.asarray([[1.0, 0.0]], dtype=np.float32)
+        ), patch.object(
+            service, "uses_asymmetric_embeddings", return_value=True
         ), patch.object(service, "search_similar_products_by_vectors", return_value=hits), patch.object(
+            service, "search_category_candidates_by_vectors", return_value=[[]]
+        ), patch.object(
             service, "select_candidates_with_llm_batch", return_value={}
         ) as llm:
             result = service.predict_categories(
@@ -95,9 +101,19 @@ class ProductEvidenceTest(unittest.TestCase):
         llm.assert_called_once_with([])
 
     def test_predict_returns_no_similar_products_without_category_search_or_llm(self):
+        product_embeddings = np.asarray([[1.0, 0.0]], dtype=np.float32)
+        category_embeddings = np.asarray([[0.0, 1.0]], dtype=np.float32)
         with patch.object(
-            service, "embed_queries", return_value=np.asarray([[1.0, 0.0]], dtype=np.float32)
-        ), patch.object(service, "search_similar_products_by_vectors", return_value=[[]]), patch.object(
+            service, "embed_passages", return_value=product_embeddings
+        ) as passage_embedding, patch.object(
+            service, "embed_queries", return_value=category_embeddings
+        ) as query_embedding, patch.object(
+            service, "uses_asymmetric_embeddings", return_value=True
+        ), patch.object(
+            service, "search_similar_products_by_vectors", return_value=[[]]
+        ) as product_search, patch.object(
+            service, "search_category_candidates_by_vectors", return_value=[[]]
+        ) as category_search, patch.object(
             service, "select_candidates_with_llm_batch", return_value={}
         ) as llm:
             result = service.predict_categories(
@@ -108,7 +124,35 @@ class ProductEvidenceTest(unittest.TestCase):
         self.assertEqual("NO_SIMILAR_PRODUCTS", result[0].llmStatus)
         self.assertEqual("NO_SIMILAR_PRODUCTS", result[0].decisionSource)
         self.assertIsNone(result[0].categoryId)
+        passage_embedding.assert_called_once()
+        query_embedding.assert_called_once()
+        np.testing.assert_array_equal(product_embeddings, product_search.call_args.args[0])
+        np.testing.assert_array_equal(category_embeddings, category_search.call_args.args[1])
         llm.assert_called_once_with([])
+
+    def test_predict_reuses_product_embeddings_for_symmetric_provider(self):
+        embeddings = np.asarray([[1.0, 0.0]], dtype=np.float32)
+        with patch.object(
+            service, "embed_passages", return_value=embeddings
+        ), patch.object(
+            service, "embed_queries"
+        ) as query_embedding, patch.object(
+            service, "uses_asymmetric_embeddings", return_value=False
+        ), patch.object(
+            service, "search_similar_products_by_vectors", return_value=[[]]
+        ) as product_search, patch.object(
+            service, "search_category_candidates_by_vectors", return_value=[[]]
+        ) as category_search, patch.object(
+            service, "select_candidates_with_llm_batch", return_value={}
+        ):
+            service.predict_categories(
+                1,
+                [ProductItem(rowId=1, productName="검색 결과 없는 상품")],
+            )
+
+        query_embedding.assert_not_called()
+        np.testing.assert_array_equal(embeddings, product_search.call_args.args[0])
+        np.testing.assert_array_equal(embeddings, category_search.call_args.args[1])
 
     def test_mallangi_alias_auto_selects_clay_without_llm(self):
         categories = [{
@@ -117,7 +161,11 @@ class ProductEvidenceTest(unittest.TestCase):
             "fullPath": "출산/육아 > 완구/인형 > 미술놀이 > 클레이",
         }]
         with patch.object(
+            service, "embed_passages", return_value=np.asarray([[1.0, 0.0]], dtype=np.float32)
+        ), patch.object(
             service, "embed_queries", return_value=np.asarray([[1.0, 0.0]], dtype=np.float32)
+        ), patch.object(
+            service, "uses_asymmetric_embeddings", return_value=True
         ), patch.object(
             service, "search_similar_products_by_vectors", return_value=[[]]
         ), patch.object(

@@ -12,6 +12,7 @@ from app.category_matcher.config.settings import (
 
 class LocalEmbeddingProvider:
     provider_name = "local"
+    is_asymmetric = False
 
     def __init__(self) -> None:
         self._model: SentenceTransformer | None = None

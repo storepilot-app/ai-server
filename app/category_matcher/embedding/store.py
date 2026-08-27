@@ -24,6 +24,10 @@ def embed_passages(texts: list[str]) -> np.ndarray:
     return provider.embed_passages(texts)
 
 
+def uses_asymmetric_embeddings() -> bool:
+    return get_embedding_provider().is_asymmetric
+
+
 def rebuild_category_cache(version_id: int, categories: list[CategoryItem]) -> None:
     version_dir = category_cache_dir(version_id)
     version_dir.mkdir(parents=True, exist_ok=True)

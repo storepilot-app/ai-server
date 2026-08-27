@@ -16,6 +16,10 @@ class EmbeddingProvider(Protocol):
     def cache_key(self) -> str:
         ...
 
+    @property
+    def is_asymmetric(self) -> bool:
+        ...
+
     def embed(self, texts: list[str]) -> np.ndarray:
         ...
 

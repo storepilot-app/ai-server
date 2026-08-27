@@ -30,6 +30,10 @@ class SolarEmbeddingProvider:
     provider_name = "solar"
 
     @property
+    def is_asymmetric(self) -> bool:
+        return SOLAR_EMBEDDING_QUERY_MODEL != SOLAR_EMBEDDING_PASSAGE_MODEL
+
+    @property
     def model_name(self) -> str:
         return f"{SOLAR_EMBEDDING_QUERY_MODEL}+{SOLAR_EMBEDDING_PASSAGE_MODEL}"
 

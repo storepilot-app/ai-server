@@ -4,10 +4,12 @@ from time import perf_counter
 from app.category_matcher.config.settings import CATEGORY_EMBEDDING_CANDIDATE_K, PRODUCT_REPRESENTATIVE_K
 from app.category_matcher.decision.policy import auto_accepted_category
 from app.category_matcher.embedding.store import (
+    embed_passages,
     embed_queries,
     load_category_metadata,
     rebuild_category_cache,
     search_category_candidates_by_vectors,
+    uses_asymmetric_embeddings,
 )
 from app.category_matcher.llm.judge import (
     LlmSelection,
@@ -46,17 +48,26 @@ def predict_categories(
     queries = [preprocess_embedding_query(product.productName) for product in products]
     preprocess_ms = elapsed_ms(preprocess_started_at)
 
-    embedding_started_at = perf_counter()
-    query_embeddings = embed_queries(queries)
-    embedding_ms = elapsed_ms(embedding_started_at)
+    product_embedding_started_at = perf_counter()
+    product_embeddings = embed_passages(queries)
+    product_embedding_ms = elapsed_ms(product_embedding_started_at)
+
+    category_embedding_started_at = perf_counter()
+    category_query_embeddings = (
+        embed_queries(queries)
+        if uses_asymmetric_embeddings()
+        else product_embeddings
+    )
+    category_embedding_ms = elapsed_ms(category_embedding_started_at)
+    embedding_ms = product_embedding_ms + category_embedding_ms
 
     product_candidates = [ProductCandidates(product=product, candidates=[]) for product in products]
     search_started_at = perf_counter()
-    product_hit_rows = search_similar_products_by_vectors(query_embeddings)
+    product_hit_rows = search_similar_products_by_vectors(product_embeddings)
     search_ms = elapsed_ms(search_started_at)
 
     category_search_started_at = perf_counter()
-    category_candidate_rows = search_category_candidates_by_vectors(version_id, query_embeddings)
+    category_candidate_rows = search_category_candidates_by_vectors(version_id, category_query_embeddings)
     category_search_ms = elapsed_ms(category_search_started_at)
     category_metadata = load_category_metadata(version_id)
     category_aliases = load_category_aliases()
@@ -131,7 +142,8 @@ def predict_categories(
     response_ms = elapsed_ms(response_started_at)
     logger.info(
         "category_predict_timing version_id=%s products=%d no_similar=%d auto_selected=%d "
-        "llm_items=%d preprocess_ms=%.1f embedding_ms=%.1f faiss_ms=%.1f category_search_ms=%.1f evidence_ms=%.1f "
+        "llm_items=%d preprocess_ms=%.1f embedding_ms=%.1f product_embedding_ms=%.1f "
+        "category_embedding_ms=%.1f faiss_ms=%.1f category_search_ms=%.1f evidence_ms=%.1f "
         "decision_ms=%.1f llm_ms=%.1f response_ms=%.1f total_ms=%.1f",
         version_id,
         len(products),
@@ -140,6 +152,8 @@ def predict_categories(
         len(ambiguous_items),
         preprocess_ms,
         embedding_ms,
+        product_embedding_ms,
+        category_embedding_ms,
         search_ms,
         category_search_ms,
         evidence_ms,

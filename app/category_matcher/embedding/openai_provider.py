@@ -22,6 +22,7 @@ logger = logging.getLogger("uvicorn.error").getChild("storepilot.embedding_api")
 
 class OpenAIEmbeddingProvider:
     provider_name = "openai"
+    is_asymmetric = False
 
     @property
     def model_name(self) -> str:
