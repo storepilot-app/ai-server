@@ -114,9 +114,9 @@ class LlmCategorySelectionTest(unittest.TestCase):
         self.assertNotIn("similarProducts", request.data.decode("utf-8"))
         self.assertNotIn("candidates", request.data.decode("utf-8"))
         self.assertNotIn("categoryDistribution", request.data.decode("utf-8"))
-        self.assertNotIn("similar product", request.data.decode("utf-8"))
+        self.assertIn("similarProductNames", system_prompt)
         self.assertEqual(
-            [[0, "A > B", 0.9123, "SIMILAR_PRODUCT"]],
+            [[0, "A > B", 0.9123, "SIMILAR_PRODUCT", ["similar product"]]],
             compact_item["categoryOptions"],
         )
         self.assertEqual([{"rowId": 7, "matched": True, "selectedIndex": 0}], decisions)

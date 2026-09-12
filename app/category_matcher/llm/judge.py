@@ -226,7 +226,9 @@ def request_llm_category_decisions(items: list[ProductCandidates]) -> list[dict]
                 "role": "system",
                 "content": (
                     "Choose one Naver category option per product. "
-                    "categoryOptions=[index,category,score,source]. "
+                    "categoryOptions=[index,category,score,source,similarProductNames]. "
+                    "similarProductNames are retrieved examples associated with that category, not verified matches. "
+                    "Compare their actual product type with the input product; shared brand or character names alone are insufficient. "
                     "Select an option only when the product name provides enough evidence that the option "
                     "matches the product's primary shopping category. "
                     "Treat score and source as retrieval metadata, never as proof of a match. "
@@ -256,6 +258,12 @@ def request_llm_category_decisions(items: list[ProductCandidates]) -> list[dict]
                                         candidate.fullPath,
                                         round(candidate.score, 4),
                                         source,
+                                        list(dict.fromkeys(
+                                            product.productName
+                                            for product in item.similar_products
+                                            if product.categoryId == candidate.categoryId
+                                            and product.fullPath == candidate.fullPath
+                                        )),
                                     ]
                                     for index, (candidate, source) in enumerate(item.category_options())
                                 ],
