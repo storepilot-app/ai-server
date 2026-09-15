@@ -22,6 +22,17 @@ class RebuildResponse(BaseModel):
 class ProductItem(BaseModel):
     rowId: int
     productName: str
+    imageUrl: str | None = None
+
+
+class ImageProductAnalysis(BaseModel):
+    productType: str | None = Field(default=None, max_length=100)
+    colors: list[str] = Field(default_factory=list, max_length=5)
+    forms: list[str] = Field(default_factory=list, max_length=5)
+    visibleText: list[str] = Field(default_factory=list, max_length=10)
+    uncertainties: list[str] = Field(default_factory=list, max_length=10)
+    imageMatchesProductName: bool
+    confidence: float = Field(ge=0, le=1)
 
 
 class MyCategoryMappingItem(BaseModel):
@@ -61,6 +72,8 @@ class CategoryDistributionItem(BaseModel):
 
 
 class PredictionItem(BaseModel):
+    imageAnalysis: ImageProductAnalysis | None = None
+    imageAnalysisStatus: str = "SKIPPED"
     rowId: int
     categoryId: int | None
     categoryCode: str | None

@@ -11,6 +11,49 @@ from app.category_matcher.product_memory import store
 
 
 class ProductIndexStoreTest(unittest.TestCase):
+    def test_append_counts_unique_products_and_reembeds_changed_input(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(store, "PRODUCT_CACHE_ROOT", Path(directory)), \
+                patch.object(store, "embed_passages", side_effect=lambda texts: np.asarray([
+                    [1., 0.] if text == "전자계산기" else [0., 1.] for text in texts
+                ], dtype=np.float32)) as embed:
+            category = store.NaverCategoryLabel(1, "A", "계산기")
+            first = store.append_product_feedbacks([("전자계산기", category)])
+            second = store.append_product_feedbacks([("전자 계산기", category), ("전자 계산기", category)])
+            self.assertEqual(1, first["insertedProductCount"])
+            self.assertEqual(0, second["insertedProductCount"])
+            self.assertEqual(1, second["updatedProductCount"])
+            self.assertEqual(1, second["indexedProductCount"])
+            np.testing.assert_allclose(store._load_index().index.reconstruct(0), [0., 1.])
+            self.assertEqual(2, embed.call_count)
+            store.append_product_feedbacks([("전자 계산기", category)])
+            self.assertEqual(2, embed.call_count)
+            stats = store.product_category_stats()
+            self.assertEqual(1, stats["totalProductCount"])
+            self.assertEqual(1, stats["stats"][0]["productCount"])
+
+    def test_embedding_failure_preserves_live_index(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(store, "PRODUCT_CACHE_ROOT", Path(directory)), \
+                patch.object(store, "embed_passages", return_value=np.asarray([[1., 0.]], dtype=np.float32)):
+            category = store.NaverCategoryLabel(1, "A", "계산기")
+            store.append_product_feedbacks([("전자계산기", category)])
+            before = store._load_index()
+            with patch.object(store, "embed_passages", side_effect=RuntimeError("API unavailable")):
+                with self.assertRaises(RuntimeError):
+                    store.append_product_feedbacks([("전자 계산기", category)])
+            self.assertIs(before, store._load_index())
+            self.assertEqual("전자계산기", before.products[0].product_name)
+
+    def test_shared_stats_count_conflicting_product_once_in_total(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(store, "PRODUCT_CACHE_ROOT", Path(directory)):
+            a = store.NaverCategoryLabel(1, "A", "A")
+            b = store.NaverCategoryLabel(2, "B", "B")
+            index = store._new_index(2)
+            index.add(np.asarray([[1., 0.]], dtype=np.float32))
+            store._loaded_index = store.LoadedProductIndex(index, [store.HistoricalProduct("상품", "상품", (a, b))])
+            stats = store.product_category_stats()
+            self.assertEqual(1, stats["totalProductCount"])
+            self.assertEqual(2, sum(item["productCount"] for item in stats["stats"]))
+
     def setUp(self):
         store._loaded_index = None
 

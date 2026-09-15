@@ -1,4 +1,5 @@
 import logging
+from app.category_matcher.llm.image_analyzer import analyze_ambiguous_products
 from time import perf_counter
 
 from app.category_matcher.config.settings import CATEGORY_EMBEDDING_CANDIDATE_K, PRODUCT_REPRESENTATIVE_K
@@ -122,6 +123,7 @@ def predict_categories(
     decision_ms = elapsed_ms(decision_started_at)
 
     llm_started_at = perf_counter()
+    analyze_ambiguous_products(ambiguous_items)
     llm_selections = select_candidates_with_llm_batch(ambiguous_items)
     llm_ms = elapsed_ms(llm_started_at)
 
@@ -140,6 +142,9 @@ def predict_categories(
         for item in resolved_items
     ]
     response_ms = elapsed_ms(response_started_at)
+    for item, result in zip(resolved_items, results):
+        result.imageAnalysis = item.image_analysis
+        result.imageAnalysisStatus = item.image_analysis_status
     logger.info(
         "category_predict_timing version_id=%s products=%d no_similar=%d auto_selected=%d "
         "llm_items=%d preprocess_ms=%.1f embedding_ms=%.1f product_embedding_ms=%.1f "

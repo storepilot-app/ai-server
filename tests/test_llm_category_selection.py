@@ -61,6 +61,9 @@ class LlmCategorySelectionTest(unittest.TestCase):
     def test_sends_compact_payload_without_duplicate_candidate_data(self) -> None:
         item = service.ProductCandidates(
             product=service.ProductItem(rowId=7, productName="compact product"),
+            image_analysis=service.ImageProductAnalysis(
+                productType="반창고", imageMatchesProductName=True, confidence=0.9
+            ),
             candidates=[],
             similar_products=[
                 SimilarProductItem(
@@ -110,7 +113,8 @@ class LlmCategorySelectionTest(unittest.TestCase):
         self.assertIn("distinguish accessories from main products", system_prompt)
         self.assertIn("reject rather than guess", system_prompt)
         self.assertIn("matched=false", system_prompt)
-        self.assertEqual({"rowId", "productName", "categoryOptions"}, set(compact_item))
+        self.assertEqual({"rowId", "productName", "categoryOptions", "imageAnalysis"}, set(compact_item))
+        self.assertEqual("반창고", compact_item["imageAnalysis"]["productType"])
         self.assertNotIn("similarProducts", request.data.decode("utf-8"))
         self.assertNotIn("candidates", request.data.decode("utf-8"))
         self.assertNotIn("categoryDistribution", request.data.decode("utf-8"))

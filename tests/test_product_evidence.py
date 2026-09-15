@@ -89,13 +89,14 @@ class ProductEvidenceTest(unittest.TestCase):
             service, "search_category_candidates_by_vectors", return_value=[[]]
         ), patch.object(
             service, "select_candidates_with_llm_batch", return_value={}
-        ) as llm:
+        ) as llm, patch.object(service, "analyze_ambiguous_products") as image_analysis:
             result = service.predict_categories(
                 1,
                 [ProductItem(rowId=1, productName="휴대용 전자 계산기")],
             )
 
         self.assertEqual("PRODUCT_AUTO_ACCEPT", result[0].decisionSource)
+        image_analysis.assert_called_once_with([])
         self.assertEqual("AUTO_SELECTED", result[0].llmStatus)
         self.assertEqual([], result[0].candidates)
         llm.assert_called_once_with([])

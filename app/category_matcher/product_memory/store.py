@@ -4,6 +4,7 @@ import json
 import os
 import re
 import threading
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
@@ -68,6 +69,8 @@ class LoadedProductIndex:
 
 _loaded_index: LoadedProductIndex | None = None
 _lock = threading.RLock()
+_stats_cache = None
+_stats_index = None
 
 
 def normalize_product_title(value: str) -> str:
@@ -186,37 +189,15 @@ def _collapse_search_results(
 
 
 def add_product_feedback(product_name: str, category: NaverCategoryLabel) -> int:
-    global _loaded_index
-    normalized = normalize_product_title(product_name)
-    if not normalized or not category.category_code.strip():
-        raise ValueError("Product name and Naver category are required.")
+    return add_product_feedbacks([(product_name, category)])
 
-    with _lock:
-        loaded = _load_index()
-        if loaded is None:
-            vector = embed_passages([preprocess_embedding_query(product_name)])
-            index = _new_index(int(vector.shape[1]))
-            index.add(vector)
-            products = [HistoricalProduct(product_name.strip(), normalized, (category,))]
-            _save_index(index, products)
-            _loaded_index = LoadedProductIndex(index, products)
-            return 1
-
-        for index, product in enumerate(loaded.products):
-            if product.normalized_title != normalized:
-                continue
-            loaded.products[index] = HistoricalProduct(product_name.strip(), normalized, (category,))
-            _save_index(loaded.index, loaded.products)
-            return len(loaded.products)
-
-        vector = embed_passages([preprocess_embedding_query(product_name)])
-        loaded.index.add(vector)
-        loaded.products.append(HistoricalProduct(product_name.strip(), normalized, (category,)))
-        _save_index(loaded.index, loaded.products)
-        return len(loaded.products)
 
 
 def add_product_feedbacks(feedbacks: list[tuple[str, NaverCategoryLabel]]) -> int:
+    return append_product_feedbacks(feedbacks)["indexedProductCount"]
+
+
+def append_product_feedbacks(feedbacks: list[tuple[str, NaverCategoryLabel]]) -> dict[str, int]:
     global _loaded_index
     products_to_add: list[HistoricalProduct] = []
     products_to_update: dict[str, HistoricalProduct] = {}
@@ -238,26 +219,70 @@ def add_product_feedbacks(feedbacks: list[tuple[str, NaverCategoryLabel]]) -> in
             index.add(vectors)
             _save_index(index, products)
             _loaded_index = LoadedProductIndex(index, products)
-            return len(products)
+            return {"indexedProductCount": len(products), "insertedProductCount": len(products),
+                    "updatedProductCount": 0}
 
         existing_indexes = {
             product.normalized_title: index
             for index, product in enumerate(loaded.products)
         }
+        updated_products = list(loaded.products)
+        changed_indexes: list[int] = []
+        updated_count = 0
         for normalized, product in products_to_update.items():
             existing_index = existing_indexes.get(normalized)
             if existing_index is None:
                 products_to_add.append(product)
             else:
-                loaded.products[existing_index] = product
+                updated_count += 1
+                if preprocess_embedding_query(loaded.products[existing_index].product_name) != preprocess_embedding_query(product.product_name):
+                    changed_indexes.append(existing_index)
+                updated_products[existing_index] = product
 
+        targets = [updated_products[index] for index in changed_indexes] + products_to_add
+        vectors = _embed_products(targets) if targets else None
+        if changed_indexes:
+            # Rebuild vector storage without re-embedding unchanged products; preserve row alignment.
+            all_vectors = loaded.index.reconstruct_n(0, loaded.index.ntotal)
+            for offset, index in enumerate(changed_indexes):
+                all_vectors[index] = vectors[offset]
+            index = _new_index(loaded.index.d)
+            index.add(all_vectors)
+        else:
+            index = faiss.clone_index(loaded.index)
         if products_to_add:
-            vectors = _embed_products(products_to_add)
-            loaded.index.add(vectors)
-            loaded.products.extend(products_to_add)
+            index.add(vectors[len(changed_indexes):])
+            updated_products.extend(products_to_add)
 
-        _save_index(loaded.index, loaded.products)
-        return len(loaded.products)
+        _save_index(index, updated_products)
+        _loaded_index = LoadedProductIndex(index, updated_products)
+        return {"indexedProductCount": len(updated_products), "insertedProductCount": len(products_to_add),
+                "updatedProductCount": updated_count}
+
+
+def product_category_stats() -> dict:
+    global _stats_cache, _stats_index
+    with _lock:
+        loaded = _load_index()
+        if _stats_cache is not None and _stats_index is loaded:
+            return _stats_cache
+        products = loaded.products if loaded else []
+        counts = {}
+        for product in products:
+            for category in set(product.categories):
+                item = counts.setdefault(category.category_code, {
+                    "naverCategoryId": category.category_id,
+                    "naverCategoryCode": category.category_code,
+                    "naverCategoryFullPath": category.full_path, "productCount": 0,
+                })
+                item["productCount"] += 1
+        metadata_path = _product_cache_dir() / "products.json"
+        updated_at = datetime.fromtimestamp(metadata_path.stat().st_mtime, timezone.utc).isoformat() if metadata_path.exists() else None
+        _stats_cache = {"categoryCount": len(counts), "totalProductCount": len(products),
+                "updatedAt": updated_at,
+                "stats": sorted(counts.values(), key=lambda item: (-item["productCount"], item["naverCategoryCode"]))}
+        _stats_index = loaded
+        return _stats_cache
 
 
 def _embed_products(products: list[HistoricalProduct]) -> np.ndarray:
@@ -323,6 +348,7 @@ def _load_index() -> LoadedProductIndex | None:
 
 
 def _save_index(index: faiss.Index, products: list[HistoricalProduct]) -> None:
+    global _stats_cache
     directory = _product_cache_dir()
     directory.mkdir(parents=True, exist_ok=True)
     index_temp = directory / "products.faiss.tmp"
@@ -359,6 +385,7 @@ def _save_index(index: faiss.Index, products: list[HistoricalProduct]) -> None:
     )
     os.replace(index_temp, directory / "products.faiss")
     os.replace(metadata_temp, directory / "products.json")
+    _stats_cache = None
 
 
 def _product_cache_dir() -> Path:

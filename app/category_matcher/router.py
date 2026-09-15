@@ -7,6 +7,8 @@ from app.category_matcher.product_memory.store import (
     NaverCategoryLabel,
     add_product_feedback,
     add_product_feedbacks,
+    append_product_feedbacks,
+    product_category_stats,
     rebuild_product_index,
 )
 from app.category_matcher.schemas import (
@@ -135,3 +137,22 @@ def add_feedbacks(request: ProductFeedbackBatchRequest) -> ProductFeedbackRespon
         indexedProductCount=count,
         message="Product corrections added to the search index.",
     )
+
+
+@router.post("/product-index/append")
+def append_products(request: ProductFeedbackBatchRequest):
+    try:
+        result = append_product_feedbacks([
+            (product.productName, NaverCategoryLabel(product.categoryId, product.categoryCode, product.fullPath))
+            for product in request.products
+        ])
+        return {"userId": request.userId, **result, "message": "Products appended to shared index."}
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except (RuntimeError, OSError) as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+
+
+@router.get("/product-index/stats")
+def get_product_stats():
+    return product_category_stats()
