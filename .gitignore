@@ -5,3 +5,5 @@ __pycache__/
 ai-cache/
 .uv-cache/
 .uv-python/
+.venv/
+.venv-backup*/
